@@ -1,0 +1,118 @@
+/* ===== ZCode 霓虹主题包（macOS edition） =====
+   源自 Rick_ZhangR1/zcode-ui-enhancer 的 background.css，
+   移除了壁纸背景与 13 个 --color-* 面板 token 覆盖（版本耦合最深的部分），
+   只保留纯装饰层：不依赖任何官方 token 定义，抗升级。 */
+
+/* ----- 输入框聚焦霓虹描边 ----- */
+html.dark input:focus,
+html.dark textarea:focus,
+html.dark [contenteditable="true"]:focus {
+  border-color: rgb(96 165 250 / 0.7) !important;
+  box-shadow: 0 0 0 1px rgb(96 165 250 / 0.35), 0 0 20px rgb(96 165 250 / 0.35) !important;
+}
+
+/* ----- 渐变滚动条 ----- */
+html.dark ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgb(64 153 255 / 0.6), rgb(123 92 229 / 0.6)) !important;
+  background-clip: padding-box !important;
+  border: 3px solid transparent !important;
+  border-radius: 9999px !important;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgb(64 153 255 / 0.9), rgb(123 92 229 / 0.9)) !important;
+  background-clip: padding-box !important;
+}
+html.dark ::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* ----- 选区颜色 ----- */
+html.dark ::selection {
+  background: rgb(64 153 255 / 0.45);
+}
+
+/* ----- 主按钮：蓝紫渐变 + 呼吸光 ----- */
+html.dark .bg-primary {
+  background-image: linear-gradient(135deg, rgb(64 153 255), rgb(123 92 229)) !important;
+  box-shadow: 0 2px 14px rgb(96 132 255 / 0.28);
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
+  animation: zcode-btn-breathe 3s ease-in-out infinite;
+}
+html.dark .bg-primary:hover {
+  box-shadow: 0 2px 22px rgb(96 132 255 / 0.5);
+  filter: brightness(1.08);
+}
+html.dark .text-primary-foreground {
+  color: #fff !important;
+}
+@keyframes zcode-btn-breathe {
+  0%,
+  100% {
+    box-shadow: 0 2px 12px rgb(96 132 255 / 0.25);
+  }
+  50% {
+    box-shadow: 0 2px 26px rgb(96 132 255 / 0.55);
+  }
+}
+
+/* ----- 输入框微光 ----- */
+html.dark input,
+html.dark textarea,
+html.dark [contenteditable="true"] {
+  box-shadow: 0 0 0 1px rgb(96 165 250 / 0.14);
+}
+
+/* ----- 卡片：圆角 + 渐变描边 + 悬停浮起 ----- */
+html.dark .bg-card {
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  background:
+    linear-gradient(var(--color-card, #2b2b2b), var(--color-card, #2b2b2b)) padding-box,
+    linear-gradient(135deg, rgb(64 153 255 / 0.5), rgb(123 92 229 / 0.5)) border-box !important;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+  animation: zcode-pop-in 0.35s ease-out backwards;
+}
+html.dark .bg-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 26px rgb(64 153 255 / 0.24);
+  border-color: rgb(96 165 250 / 0.3) !important;
+}
+@keyframes zcode-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ----- 顶栏标题流光字 ----- */
+html.dark .bg-header h1,
+html.dark .bg-header h2,
+html.dark .bg-header [class*="title"] {
+  background: linear-gradient(90deg, rgb(96 165 250), rgb(168 130 255), rgb(96 165 250));
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  animation: zcode-shine 5s linear infinite;
+}
+@keyframes zcode-shine {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+/* ----- 侧栏悬停内光 ----- */
+html.dark .bg-sidebar {
+  transition: box-shadow 0.3s ease;
+}
+html.dark .bg-sidebar:hover {
+  box-shadow: inset 0 0 36px rgb(64 153 255 / 0.08);
+}

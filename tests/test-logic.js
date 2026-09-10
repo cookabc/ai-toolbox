@@ -62,7 +62,7 @@ global.MutationObserver = class {
 };
 
 /* ---------- 载入脚本（直读仓库里的原始注入块） ---------- */
-const code = fs.readFileSync(path.join(__dirname, '..', 'inject', 'blocks', 'tps.js'), 'utf-8');
+const code = fs.readFileSync(path.join(__dirname, '..', 'inject', 'tps.js'), 'utf-8');
 vm.runInThisContext(code, { filename: 'tps.js' });
 
 const badge = html.documentElement.children[0];
