@@ -1,7 +1,7 @@
 /* ===== ZCode 输出速率计（tokens/s 常驻徽章，点击展开/收起） =====
    纯渲染层注入：MutationObserver 监听聊天区文本增量 → CJK/EN 混合启发式折算 token
    → 4s 滑动窗口速率 + 迷你曲线 + 本回合总量/峰值。
-   交互：常驻右上角不自动隐藏；空闲半透明，流式时点亮；点击在 pill/完整面板间切换（localStorage 记忆）。 */
+   交互：常驻右上角不自动隐藏；⚡=输出中，💤=休息（空闲弱光）；点击在 pill/完整面板间切换（localStorage 记忆）。 */
 (function () {
   if (window.__zcodeTps) return;
   window.__zcodeTps = true;
@@ -39,9 +39,9 @@
     'linear-gradient(135deg, rgb(64 153 255 / 0.55), rgb(123 92 229 / 0.55)) border-box;' +
     'box-shadow:0 0 22px rgb(96 132 255 / 0.28);' +
     'font-family:ui-monospace,Consolas,monospace;color:#dbe4ff;' +
-    'opacity:0.55;transition:opacity .5s ease, box-shadow .3s ease;white-space:nowrap;';
+    'opacity:1;transition:opacity .5s ease, box-shadow .3s ease;white-space:nowrap;';
   badge.innerHTML =
-    '<span style="font-size:13px;filter:drop-shadow(0 0 6px rgb(96 165 250 / .9))">⚡</span>' +
+    '<span id="zcode-tps-bolt" style="font-size:13px;filter:drop-shadow(0 0 6px rgb(96 165 250 / .9))">⚡</span>' +
     '<span id="zcode-tps-rate" style="font-size:19px;font-weight:700;line-height:1;min-width:48px;text-align:right;' +
       'font-variant-numeric:tabular-nums;' +
       'background:linear-gradient(90deg,#60a5fa,#a878ff);-webkit-background-clip:text;background-clip:text;color:transparent;">0.0</span>' +
@@ -52,6 +52,7 @@
   document.documentElement.appendChild(badge);   // 挂在根节点，彻底游离于聊天区观察范围之外
   var elRate = badge.querySelector('#zcode-tps-rate');
   var elMeta = badge.querySelector('#zcode-tps-meta');
+  var elBolt = badge.querySelector('#zcode-tps-bolt');
   var glyph  = badge.querySelector('#zcode-tps-glyph');
   var spark = badge.querySelector('#zcode-tps-spark');
   var sctx = spark.getContext('2d');
@@ -178,7 +179,9 @@
     if (live) {
       badge.style.opacity = '1';
       badge.style.boxShadow = '0 0 26px rgb(96 132 255 / 0.45)';
-      elRate.textContent = r.toFixed(1);
+      elBolt.textContent = '⚡';
+      // 窗口内暂无新样本（流式停顿/收尾）时冻结在上一帧速率，避免先掉到 0.0 再跳均值的 lag
+      if (r >= 0.05) elRate.textContent = r.toFixed(1);
       elMeta.innerHTML = 'Σ ' + fmtN(turn.tokens) + ' tok · ' + ((t - turn.start) / 1000).toFixed(1) + 's<br>峰值 ' +
         turn.peak.toFixed(1) + ' · EST';
     } else {
@@ -193,8 +196,9 @@
       } else if (!turn.tokens) {
         elRate.textContent = '0.0';   // 从未有过回合
       }
-      badge.style.opacity = '0.55';
-      badge.style.boxShadow = '0 0 22px rgb(96 132 255 / 0.28)';
+      elBolt.textContent = '💤';
+      badge.style.opacity = '1';
+      badge.style.boxShadow = '0 0 18px rgb(96 132 255 / 0.15)';
     }
     drawSpark();
   }, TICK);
