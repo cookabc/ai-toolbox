@@ -37,11 +37,12 @@
     'opacity:0;transition:opacity .8s ease, box-shadow .3s ease;white-space:nowrap;';
   badge.innerHTML =
     '<span style="font-size:13px;filter:drop-shadow(0 0 6px rgb(96 165 250 / .9))">⚡</span>' +
-    '<span id="zcode-tps-rate" style="font-size:19px;font-weight:700;line-height:1;' +
+    '<span id="zcode-tps-rate" style="font-size:19px;font-weight:700;line-height:1;min-width:48px;text-align:right;' +
+      'font-variant-numeric:tabular-nums;' +
       'background:linear-gradient(90deg,#60a5fa,#a878ff);-webkit-background-clip:text;background-clip:text;color:transparent;">0.0</span>' +
     '<span style="font-size:10px;opacity:.65;margin-left:-3px;">tok/s</span>' +
     '<canvas id="zcode-tps-spark" width="160" height="44" style="width:80px;height:22px;"></canvas>' +
-    '<span id="zcode-tps-meta" style="font-size:10px;opacity:.78;line-height:1.45;text-align:left;">Σ 0 tok<br>EST · 0.0s</span>';
+    '<span id="zcode-tps-meta" style="font-size:10px;opacity:.78;line-height:1.45;text-align:left;width:112px;">Σ 0 tok<br>EST · 0.0s</span>';
   document.documentElement.appendChild(badge);   // 挂在根节点，彻底游离于聊天区观察范围之外
   var elRate = badge.querySelector('#zcode-tps-rate');
   var elMeta = badge.querySelector('#zcode-tps-meta');
@@ -53,9 +54,14 @@
   var hist = [];                          // 速率历史（画曲线）
   var turn = { active: false, start: 0, tokens: 0, peak: 0 };
   var lastGrowth = -1e9;
+  var endedAt = -1e9;                     // 上一回合结束时刻（冷却期用）
 
   function feed(netTok, t) {
     if (!netTok) return;
+    // 孤立小尖峰（点击/展开节点引发的小幅重渲染）不激活新回合；流式首 tick 通常 ≥5 tok
+    if (!turn.active && netTok < 5) return;
+    // 回合结束后的冷却期：10s 内的小增量不重新点亮（真实新回合连续且量大，不受影响）
+    if (!turn.active && t - endedAt < 10000 && netTok < 50) return;
     samples.push({ t: t, tok: netTok });
     if (netTok > 0) {                    // 只有净增长才推进回合/总量；净减少只拉低瞬时速率
       if (!turn.active) { turn.active = true; turn.start = t; turn.tokens = 0; turn.peak = 0; }
@@ -80,24 +86,13 @@
      直接观察整个 body：不依赖聊天区 DOM 结构（版本鲁棒）。
      流式期间聊天区是最大的文本增量来源；侧栏计时器等噪声 <1 tok/s 可忽略。
      徽章挂在 documentElement 上，天然在观察范围外 + onMuts 里再跳过自身，双保险防反馈。
-     composer 只用于把徽章吸附到输入框上缘；找不到就钉在右上角。 */
-  var composerEl = null, mo = null;
-  function findComposer() {
-    var els = document.querySelectorAll('textarea, input[type="text"], input:not([type]), [contenteditable="true"], [contenteditable=""]');
-    for (var i = 0; i < els.length; i++) {
-      var el = els[i];
-      var sig = (el.getAttribute('placeholder') || '') + '|' + (el.getAttribute('aria-label') || '') + '|' +
-        (el.getAttribute('data-placeholder') || '');
-      if (/继续输入|排队|queue|follow/i.test(sig)) return el;
-    }
-    return els.length ? els[els.length - 1] : null;
-  }
+     位置固定右上角：原版的"吸附输入框上缘"依赖启发式找 composer，目标选错时视觉上乱跳。 */
+  var mo = null;
   function anchor() {
     if (!mo) {
       mo = new MutationObserver(onMuts);
       mo.observe(document.body, { subtree: true, childList: true, characterData: true, characterDataOldValue: true });
     }
-    if (!composerEl || !composerEl.isConnected) composerEl = findComposer();
   }
   function onMuts(muts) {
     var t = now();
@@ -153,7 +148,6 @@
   }
 
   /* ---------- 主循环 ---------- */
-  var lastPos = 0;
   setInterval(function () {
     anchor();
     var t = now();
@@ -162,12 +156,6 @@
     hist.push(r);
     if (hist.length > HISTORY) hist.shift();
     if (live) turn.peak = Math.max(turn.peak, r);
-
-    // 徽章跟随输入框上缘
-    if (composerEl && composerEl.isConnected) {
-      var rect = composerEl.getBoundingClientRect();
-      if (rect.width) badge.style.top = Math.max(52, rect.top - 58) + 'px';
-    }
 
     if (live) {
       badge.style.opacity = '1';
@@ -184,7 +172,7 @@
       elMeta.innerHTML = '✓ Σ ' + fmtN(turn.tokens) + ' tok · ' +
         ((lastGrowth - turn.start) / 1000).toFixed(1) + 's<br>均值 ' + avg.toFixed(1) + ' tok/s · 峰值 ' +
         turn.peak.toFixed(1) + ' · EST';
-      if (t - lastGrowth > FADE_AFTER) { turn.active = false; hist = []; }
+      if (t - lastGrowth > FADE_AFTER) { turn.active = false; endedAt = t; hist = []; }
     }
     drawSpark();
   }, TICK);

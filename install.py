@@ -256,20 +256,22 @@ def cmd_install_hook():
     hooks['enabled'] = True
     events = hooks.setdefault('events', {})
     entries = events.setdefault('SessionStart', [])
+    hook_obj = {
+        'type': 'command',
+        'command': HOOK_COMMAND,
+        'timeoutMs': 5000,
+        'statusMessage': '检查 UI 增强注入状态',
+    }
+    # schema: SessionStart 是 {matcher?, hooks:[...]} 的数组，hook 对象嵌在 hooks 键下
     target = None
     for entry in entries:
         for h in entry.get('hooks', []):
             if HOOK_TAG in h.get('command', ''):
                 target = h
     if target is None:
-        entries.append({
-            'type': 'command',
-            'command': HOOK_COMMAND,
-            'timeoutMs': 5000,
-            'statusMessage': '检查 UI 增强注入状态',
-        })
+        entries.append({'hooks': [hook_obj]})
     else:
-        target['command'] = HOOK_COMMAND  # 快照路径变化时同步
+        target.update(hook_obj)  # 快照路径变化时同步
     save_config(cfg)
     log('SessionStart hook 已安装: ZCode 启动/恢复会话时自动检测并后台重注入')
     log('  配置: %s' % CONFIG_PATH)
