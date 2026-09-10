@@ -1,6 +1,7 @@
 /* ===== ZCode 输出速率计（tokens/s 常驻徽章，点击展开/收起） =====
    纯渲染层注入：MutationObserver 监听聊天区文本增量 → CJK/EN 混合启发式折算 token
-   → 4s 滑动窗口速率 + 迷你曲线 + 本回合总量/峰值。
+   → 4s 滑动窗口速率 + 迷你曲线 + 累计总量/历史峰值。
+   口径：Σ 自启动起累计、只增不减，不按对话切分；切换会话的 DOM 拆建由对称批次闸门整体忽略。
    交互：常驻右上角不自动隐藏；⚡=输出中，💤=休息（空闲弱光）；点击在 pill/完整面板间切换（localStorage 记忆）。 */
 (function () {
   if (window.__zcodeTps) return;
@@ -68,23 +69,27 @@
     badge.addEventListener('click', function () { expanded = !expanded; applyLayout(); });
   }
 
-  /* ---------- 计量状态 ---------- */
-  var samples = [];                       // {t, tok} 增量样本
+  /* ---------- 计量状态 ----------
+     口径：累计总量制。Σ 自 ZCode 启动起只增不减（只累计正净增量），
+     不按对话/回合切分——切换会话对总量零影响。 */
+  var samples = [];                       // {t, tok} 增量样本（含负，用于瞬时速率）
   var hist = [];                          // 速率历史（画曲线）
-  var turn = { active: false, start: 0, tokens: 0, peak: 0 };
+  var turn = { active: false, start: 0 }; // active 仅用于点亮状态与速率分母爬升
+  var totalTok = 0;                       // 累计输出 token（只增不减）
+  var peakAll = 0;                        // 历史峰值速率
   var lastGrowth = -1e9;
-  var endedAt = -1e9;                     // 上一回合结束时刻（冷却期用）
+  var endedAt = -1e9;                     // 上次输出结束时刻（冷却期用）
 
   function feed(netTok, t) {
     if (!netTok) return;
-    // 孤立小尖峰（点击/展开节点引发的小幅重渲染）不激活新回合；流式首 tick 通常 ≥5 tok
+    // 孤立小尖峰（点击/展开节点引发的小幅重渲染）不点亮；流式首 tick 通常 ≥5 tok
     if (!turn.active && netTok < 5) return;
-    // 回合结束后的冷却期：10s 内的小增量不重新点亮（真实新回合连续且量大，不受影响）
+    // 冷却期：输出结束 10s 内的小增量不重新点亮（真实新回合连续且量大，不受影响）
     if (!turn.active && t - endedAt < 10000 && netTok < 50) return;
     samples.push({ t: t, tok: netTok });
-    if (netTok > 0) {                    // 只有净增长才推进回合/总量；净减少只拉低瞬时速率
-      if (!turn.active) { turn.active = true; turn.start = t; turn.tokens = 0; turn.peak = 0; }
-      turn.tokens += netTok;
+    if (netTok > 0) {                    // 只有净增长点亮并推进总量；净减少只拉低瞬时速率
+      if (!turn.active) { turn.active = true; turn.start = t; }
+      totalTok += netTok;
       lastGrowth = t;
     }
   }
@@ -137,8 +142,9 @@
         }
       }
     }
-    // 批次闸门：滚轮滚动挂载历史行 / 切换会话整段加载 = 巨量净增，不是流式输出，忽略
-    if (net > BATCH_MAX) return;
+    // 批次闸门：滚动挂载历史行 / 切换会话的 DOM 拆建 = 巨量净增减，都不是流式输出，忽略
+    // （对称拦截：原版只拦正批，切会话卸载旧消息的大负批会漏进去污染速率与总量）
+    if (net > BATCH_MAX || net < -BATCH_MAX) return;
     feed(net, t);
   }
 
@@ -166,7 +172,7 @@
     sctx.fillStyle = 'rgba(96,132,255,.14)'; sctx.fill();
   }
 
-  /* ---------- 主循环：常驻不隐藏，空闲半透明 ---------- */
+  /* ---------- 主循环：常驻不隐藏，Σ 为累计总量 ---------- */
   setInterval(function () {
     anchor();
     var t = now();
@@ -174,27 +180,20 @@
     var r = Math.max(0, live ? rate(t) : 0);
     hist.push(r);
     if (hist.length > HISTORY) hist.shift();
-    if (live) turn.peak = Math.max(turn.peak, r);
 
     if (live) {
+      if (r > peakAll) peakAll = r;
       badge.style.opacity = '1';
       badge.style.boxShadow = '0 0 26px rgb(96 132 255 / 0.45)';
       elBolt.textContent = '⚡';
-      // 窗口内暂无新样本（流式停顿/收尾）时冻结在上一帧速率，避免先掉到 0.0 再跳均值的 lag
+      // 窗口内暂无新样本（流式停顿/收尾）时冻结在上一帧速率，避免先掉到 0.0 的 lag
       if (r >= 0.05) elRate.textContent = r.toFixed(1);
-      elMeta.innerHTML = 'Σ ' + fmtN(turn.tokens) + ' tok · ' + ((t - turn.start) / 1000).toFixed(1) + 's<br>峰值 ' +
-        turn.peak.toFixed(1) + ' · EST';
+      elMeta.innerHTML = 'Σ ' + fmtN(totalTok) + ' tok · 累计<br>峰值 ' + peakAll.toFixed(1) + ' · EST';
     } else {
       if (turn.active) {
-        // 回合结束：定格总结，收回合（徽章保持可见，进入冷却期）
-        var avg = turn.tokens / Math.max(1, (lastGrowth - turn.start) / 1000);
-        elRate.textContent = avg.toFixed(1);
-        elMeta.innerHTML = '✓ Σ ' + fmtN(turn.tokens) + ' tok · ' +
-          ((lastGrowth - turn.start) / 1000).toFixed(1) + 's<br>均值 ' + avg.toFixed(1) + ' tok/s · 峰值 ' +
-          turn.peak.toFixed(1) + ' · EST';
-        turn.active = false; endedAt = t; hist = [];
-      } else if (!turn.tokens) {
-        elRate.textContent = '0.0';   // 从未有过回合
+        turn.active = false; endedAt = t;   // 收点亮状态；总量/数字保持不变
+      } else if (!totalTok) {
+        elRate.textContent = '0.0';         // 从未有过输出
       }
       elBolt.textContent = '💤';
       badge.style.opacity = '1';
