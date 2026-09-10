@@ -3,6 +3,8 @@
 非官方 **ZCode 桌面端（macOS）** 渲染层增强工具：**tok/s 输出速率计 + 霓虹主题包**。
 通过把注入块合并进 `app.asar` 的渲染入口实现，纯本地、不改动任何业务逻辑。
 
+![hero](docs/hero.png)
+
 > **致谢 / Credits**：本项目 fork 自 [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer)（Gitee），基于原版的注入架构与 tps.js 速率计做了 macOS 移植与裁剪。感谢原作者的出色工作！
 > This project is forked from [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer) with macOS support. All credit for the original injection architecture and the TPS meter goes to the original author.
 
@@ -24,6 +26,10 @@
 |---|---|
 | TPS 速率计 | 常驻右上角徽章：⚡输出中/💤休息；实时 tok/s + 累计总量（只增不减，切换对话零影响）；点击展开 30s 曲线 + 累计/峰值面板 |
 | 霓虹主题包 | 蓝紫渐变主按钮/滚动条/卡片描边/流光标题/呼吸光（深色模式下生效） |
+
+徽章运行实况（demo 页 + 无头浏览器实录，见 `demo/`）：
+
+![badge](docs/badge.gif)
 
 ## 安装
 
@@ -92,6 +98,7 @@ inject/
 install.py           # 安装/回滚/hook 管理（解包→合并→打包→原子替换）
 update/analyze_ui_compat.py  # 升级兼容性分析（原作者方法论）
 tests/test-logic.js  # TPS 计数逻辑 9 项单测
+demo/               # README 配图生成（demo 页 + 无头浏览器截图，零依赖借系统 npx）
 ```
 
 ## License
