@@ -1,6 +1,7 @@
-/* ===== ZCode 输出速率计（tokens/s 实时徽章） =====
+/* ===== ZCode 输出速率计（tokens/s 常驻徽章，点击展开/收起） =====
    纯渲染层注入：MutationObserver 监听聊天区文本增量 → CJK/EN 混合启发式折算 token
-   → 4s 滑动窗口速率 + 迷你曲线 + 本回合总量/峰值。流式时点亮，空闲淡出。 */
+   → 4s 滑动窗口速率 + 迷你曲线 + 本回合总量/峰值。
+   交互：常驻右上角不自动隐藏；空闲半透明，流式时点亮；点击在 pill/完整面板间切换（localStorage 记忆）。 */
 (function () {
   if (window.__zcodeTps) return;
   window.__zcodeTps = true;
@@ -9,8 +10,8 @@
   var IDLE_END    = 4000;   // 多久无增长判定回合结束 ms
   var TICK        = 150;    // 采样/渲染周期 ms
   var HISTORY     = 200;    // 曲线历史点数 (30s)
-  var FADE_AFTER  = 6000;   // 回合结束后保留 ms 再淡出
   var BATCH_MAX   = 100;    // 单批次净增量上限：超过视为加载历史（滚动挂载/切会话），忽略
+  var LS_KEY      = 'zcode-tps-expanded';
   var CJK = /[\u2e80-\u9fff\uf900-\ufaff\u3000-\u303f\uff01-\uff60]/;
 
   function estTokens(s) {
@@ -23,18 +24,22 @@
   function now() { return performance.now(); }
 
   /* ---------- 徽章 UI ---------- */
+  var expanded = false;
+  try { expanded = window.localStorage && localStorage.getItem(LS_KEY) === '1'; } catch (e) {}
+
   var badge = document.createElement('div');
   badge.id = 'zcode-tps-badge';
-  badge.title = '输出速率估算 (EST)：MutationObserver 监听流式文本，CJK≈1 tok/字、EN≈4 chars/tok';
+  badge.title = '输出速率估算 (EST) · 点击展开/收起详情';
   badge.style.cssText =
-    'position:fixed;right:18px;top:60px;z-index:2147483000;pointer-events:none;' +
+    'position:fixed;right:18px;top:60px;z-index:2147483000;' +
+    'pointer-events:auto;cursor:pointer;user-select:none;-webkit-user-select:none;' +
     'display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:13px;' +
     'border:1px solid transparent;' +
     'background:linear-gradient(rgb(10 8 20 / 0.78), rgb(10 8 20 / 0.78)) padding-box,' +
     'linear-gradient(135deg, rgb(64 153 255 / 0.55), rgb(123 92 229 / 0.55)) border-box;' +
     'box-shadow:0 0 22px rgb(96 132 255 / 0.28);' +
     'font-family:ui-monospace,Consolas,monospace;color:#dbe4ff;' +
-    'opacity:0;transition:opacity .8s ease, box-shadow .3s ease;white-space:nowrap;';
+    'opacity:0.55;transition:opacity .5s ease, box-shadow .3s ease;white-space:nowrap;';
   badge.innerHTML =
     '<span style="font-size:13px;filter:drop-shadow(0 0 6px rgb(96 165 250 / .9))">⚡</span>' +
     '<span id="zcode-tps-rate" style="font-size:19px;font-weight:700;line-height:1;min-width:48px;text-align:right;' +
@@ -42,12 +47,25 @@
       'background:linear-gradient(90deg,#60a5fa,#a878ff);-webkit-background-clip:text;background-clip:text;color:transparent;">0.0</span>' +
     '<span style="font-size:10px;opacity:.65;margin-left:-3px;">tok/s</span>' +
     '<canvas id="zcode-tps-spark" width="160" height="44" style="width:80px;height:22px;"></canvas>' +
-    '<span id="zcode-tps-meta" style="font-size:10px;opacity:.78;line-height:1.45;text-align:left;width:112px;">Σ 0 tok<br>EST · 0.0s</span>';
+    '<span id="zcode-tps-meta" style="font-size:10px;opacity:.78;line-height:1.45;text-align:left;width:112px;">Σ 0 tok<br>EST · 0.0s</span>' +
+    '<span id="zcode-tps-glyph" style="font-size:11px;opacity:.55;line-height:1;">+</span>';
   document.documentElement.appendChild(badge);   // 挂在根节点，彻底游离于聊天区观察范围之外
   var elRate = badge.querySelector('#zcode-tps-rate');
   var elMeta = badge.querySelector('#zcode-tps-meta');
+  var glyph  = badge.querySelector('#zcode-tps-glyph');
   var spark = badge.querySelector('#zcode-tps-spark');
   var sctx = spark.getContext('2d');
+
+  function applyLayout() {
+    spark.style.display = expanded ? '' : 'none';
+    elMeta.style.display = expanded ? '' : 'none';
+    glyph.textContent = expanded ? '−' : '+';
+    try { if (window.localStorage) localStorage.setItem(LS_KEY, expanded ? '1' : '0'); } catch (e) {}
+  }
+  applyLayout();
+  if (badge.addEventListener) {
+    badge.addEventListener('click', function () { expanded = !expanded; applyLayout(); });
+  }
 
   /* ---------- 计量状态 ---------- */
   var samples = [];                       // {t, tok} 增量样本
@@ -147,7 +165,7 @@
     sctx.fillStyle = 'rgba(96,132,255,.14)'; sctx.fill();
   }
 
-  /* ---------- 主循环 ---------- */
+  /* ---------- 主循环：常驻不隐藏，空闲半透明 ---------- */
   setInterval(function () {
     anchor();
     var t = now();
@@ -163,16 +181,20 @@
       elRate.textContent = r.toFixed(1);
       elMeta.innerHTML = 'Σ ' + fmtN(turn.tokens) + ' tok · ' + ((t - turn.start) / 1000).toFixed(1) + 's<br>峰值 ' +
         turn.peak.toFixed(1) + ' · EST';
-    } else if (turn.active) {
-      // 回合结束：保留总结，FADE_AFTER 后淡出
-      var avg = turn.tokens / Math.max(1, (lastGrowth - turn.start) / 1000);
-      badge.style.opacity = (t - lastGrowth < FADE_AFTER) ? '0.85' : '0';
+    } else {
+      if (turn.active) {
+        // 回合结束：定格总结，收回合（徽章保持可见，进入冷却期）
+        var avg = turn.tokens / Math.max(1, (lastGrowth - turn.start) / 1000);
+        elRate.textContent = avg.toFixed(1);
+        elMeta.innerHTML = '✓ Σ ' + fmtN(turn.tokens) + ' tok · ' +
+          ((lastGrowth - turn.start) / 1000).toFixed(1) + 's<br>均值 ' + avg.toFixed(1) + ' tok/s · 峰值 ' +
+          turn.peak.toFixed(1) + ' · EST';
+        turn.active = false; endedAt = t; hist = [];
+      } else if (!turn.tokens) {
+        elRate.textContent = '0.0';   // 从未有过回合
+      }
+      badge.style.opacity = '0.55';
       badge.style.boxShadow = '0 0 22px rgb(96 132 255 / 0.28)';
-      elRate.textContent = avg.toFixed(1);
-      elMeta.innerHTML = '✓ Σ ' + fmtN(turn.tokens) + ' tok · ' +
-        ((lastGrowth - turn.start) / 1000).toFixed(1) + 's<br>均值 ' + avg.toFixed(1) + ' tok/s · 峰值 ' +
-        turn.peak.toFixed(1) + ' · EST';
-      if (t - lastGrowth > FADE_AFTER) { turn.active = false; endedAt = t; hist = []; }
     }
     drawSpark();
   }, TICK);
