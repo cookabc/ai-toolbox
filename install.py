@@ -211,15 +211,65 @@ def cmd_install(res):
         log('无需重复安装。')
 
 
+def strip_blocks(idx_path):
+    """uninstall 兜底：从已注入的 index.html 里按标记剥离注入块（备份丢失时用）。"""
+    with open(idx_path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    removed = 0
+    for fname, opener, marker, where in BLOCKS:
+        mi = next((i for i, l in enumerate(lines) if marker in l), None)
+        if mi is None:
+            continue
+        closer = opener.replace('<', '</')
+        oi = max(i for i in range(mi) if lines[i].strip() == opener)      # 紧邻 marker 上方的裸开标签必是我们的
+        ci = next(i for i in range(mi, len(lines)) if lines[i].strip() == closer)
+        del lines[oi:ci + 1]
+        removed += 1
+    with open(idx_path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(lines))
+    return removed
+
+
+def uninstall_by_strip(res):
+    """无 old_v2 备份时的回滚：解包当前 asar → 剥离注入 → 打包原子替换。"""
+    asar_path = os.path.join(res, 'app.asar')
+    et = os.path.join(res, 'app_extract')
+    npx, env = find_npx()
+    if os.path.isdir(et):
+        shutil.rmtree(et)
+    asar(npx, env, 'extract', asar_path, et)
+    idx = os.path.join(et, 'out', 'renderer', 'index.html')
+    if not os.path.isfile(idx):
+        raise RuntimeError('解包后没有 out/renderer/index.html')
+    removed = strip_blocks(idx)
+    if removed != len(BLOCKS):
+        raise RuntimeError('只剥离了 %d/%d 个注入块，结构异常，放弃替换' % (removed, len(BLOCKS)))
+    new_asar = os.path.join(res, 'app.asar.new')
+    if os.path.exists(new_asar):
+        os.remove(new_asar)
+    asar(npx, env, 'pack', et, new_asar, '--unpack-dir', '**/{node-pty,ssh2}/**')
+    fix_unpacked(res, et)
+    os.replace(new_asar, asar_path)
+    shutil.rmtree(et, ignore_errors=True)
+    shutil.rmtree(new_asar + '.unpacked', ignore_errors=True)
+
+
 def cmd_uninstall(res):
     asar_path = os.path.join(res, 'app.asar')
     old = os.path.join(res, 'app.asar.old_v2')
-    if not os.path.isfile(old):
-        sys.exit('没有 app.asar.old_v2 可回滚')
-    if os.path.exists(asar_path):
-        os.replace(asar_path, os.path.join(res, 'app.asar.injected'))
-    os.replace(old, asar_path)
-    log('已回滚到官方包。旧注入保留在 app.asar.injected，确认没问题后可手动删除。')
+    if os.path.isfile(old):
+        if os.path.exists(asar_path):
+            os.replace(asar_path, os.path.join(res, 'app.asar.injected'))
+        os.replace(old, asar_path)
+        log('已回滚到官方包。旧注入保留在 app.asar.injected，确认没问题后可手动删除。')
+    else:
+        try:
+            uninstall_by_strip(res)
+        except (RuntimeError, PermissionError) as e:
+            sys.exit('剥离式回滚失败（原包未受影响）:\n%s\n\n备用方案: 重新安装 ZCode 官方包即可彻底还原。' % e)
+        log('没有 old_v2 备份，已从当前包剥离注入块并打包替换（等效官方包）。')
+    if is_injected(asar_path):
+        log('警告: app.asar 仍含注入标记，未回滚成功。')
 
 
 def refresh_snapshot():
