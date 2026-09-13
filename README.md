@@ -1,110 +1,101 @@
-# ZCode UI Enhancer (macOS Edition)
+# ZCode Usage Menu（macOS）
 
-非官方 **ZCode 桌面端（macOS）** 渲染层增强工具：**tok/s 输出速率计 + 霓虹主题包**。
-通过把注入块合并进 `app.asar` 的渲染入口实现，纯本地、不改动任何业务逻辑。
+**独立的 macOS 菜单栏用量面板**：只读 ZCode 本地用量数据库，展示今日/累计 token、缓存命中、工具调用和模型排行。**不修改 ZCode.app、不注入 `app.asar`、不会影响 ZCode 启动。**
 
-![hero](docs/hero.png)
-
-> **致谢 / Credits**：本项目 fork 自 [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer)（Gitee），基于原版的注入架构与 tps.js 速率计做了 macOS 移植与裁剪。感谢原作者的出色工作！
-> This project is forked from [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer) with macOS support. All credit for the original injection architecture and the TPS meter goes to the original author.
-
-> ⚠️ 非官方修改。注入会对 `app.asar` 做物理改写；保留 `app.asar.old_v2` 可一键回滚。本工具不分发 ZCode 的任何官方资源。
-
-## 与原版的差异
-
-| | 原版 (Windows) | macOS Edition |
-|---|---|---|
-| 安装器 | Windows 专用（.bat watcher 处理文件锁） | 原子换包：macOS 无文件锁，`os.replace` 一步到位，无需 watcher |
-| TPS 速率计 | ✅ | ✅ 原样保留（9 项单测全过） |
-| 霓虹主题包 | 与壁纸/半透明面板耦合，覆盖 13 个官方 `--color-*` token | 纯装饰层独立成 `neon.css`，不碰任何官方 token，抗升级 |
-| 壁纸 / 半透明面板 / 彗星尾 | ✅ | ❌ 裁剪（版本耦合深 + 口味取舍） |
-| 升级后恢复 | 手动重装 | **SessionStart hook 自动重装**（见下） |
+> ⚠️ **旧的 `app.asar` 渲染层注入方案已退役。** 它在本机 ZCode 3.11.2 上曾造成 renderer 白屏和无法进入应用。请勿运行根目录的 `install.py`、`install.py --install-hook` 或向 ZCode 安装包注入 `inject/*.js`。它们仅作为历史实现保留，不是支持的安装路径。
 
 ## 功能
 
-| 模块 | 说明 |
-|---|---|
-| TPS 速率计 | 常驻右上角徽章：⚡输出中/💤休息；实时 tok/s + 累计总量（只增不减，切换对话零影响）；点击展开 30s 曲线 + 累计/峰值面板 |
-| 霓虹主题包 | 蓝紫渐变主按钮/滚动条/卡片描边/流光标题/呼吸光（深色模式下生效） |
+- 菜单栏常驻显示当天输出，例如 `185k 输出`；应用启动即后台预热，点击菜单栏只读内存快照；每 30 秒后台刷新，点击展开后可手动刷新。
+- 原生 SwiftUI Popover，使用自适应 Material 卡片和 macOS 语义色，深浅色自动适配：
+  - **今日主卡**：大号今日输出、输入/回合/请求/工具调用，以及缓存读/缓存创建/非缓存输入的构成条。
+  - **累计卡**：Token（输入、输出、推理、缓存读）与活动（回合、请求、工具调用）分组展示。
+  - **模型卡**：前四个模型按已记录输出排序，使用相对水平条比较输出量。
+  - **可选成本**：在 `~/.zcode/cli/usage-prices.json` 填入输出单价后显示。
+  - **状态与操作**：刷新失败时保留旧数据并提示；顶部提供刷新和菜单（打开数据目录、退出）。
+- 自动跟随 macOS 浅色/深色模式。
+- 读取失败时保留上一次成功数据，并提供明确的无数据状态。
+- ZCode 没有启动也能读取历史数据；菜单栏 App 自己退出或崩溃不会影响 ZCode。
 
-徽章运行实况（demo 页 + 无头浏览器实录，见 `demo/`）：
+## 安装与启动
 
-![badge](docs/badge.gif)
-
-## 安装
-
-依赖：`python3`（macOS 自带即可）与 `node`/`npx`（用于 asar 解包打包）。
-
-```bash
-git clone https://github.com/tobyatgithub/zcode-ui-enhancer
-cd zcode-ui-enhancer
-python3 install.py                # 安装注入
-python3 install.py --install-hook # 安装升级自动重注入 hook（推荐）
-# 重启 ZCode 生效
-```
-
-查看状态 / 回滚：
-
-```bash
-python3 install.py --status
-python3 install.py --uninstall    # 回滚到官方包
-python3 install.py --remove-hook  # 移除自动重注入 hook
-```
-
-## 升级后自动恢复（hook 的原理）
-
-ZCode 每次升级都会用官方包覆盖 `app.asar`，注入随之丢失。本项目的解法：
-
-1. `--install-hook` 在 `~/.zcode/cli/config.json` 注册一个 **SessionStart hook**，并把安装器快照到 `~/Library/Application Support/zcode-ui-enhancer/`（仓库目录挪走也不影响）。
-2. ZCode 升级后你第一次打开它，会话启动时 hook 自动检测注入标记，丢了就在**后台**重新解包→合并→原子换包，完成后弹系统通知。
-3. 重启 ZCode 即恢复增强版。全程无需手动执行任何命令。
-
-**为什么不是 launchd 守护进程？** macOS 的 App Management 保护（TCC）禁止非授权进程写入 `/Applications` 下的 app bundle——实测 launchd 拉起的进程对 bundle 内任何写操作都会 `EPERM`。而 ZCode 会话内派生的进程继承 ZCode 自身的授权，可以写 bundle。所以检测点放在会话启动处，权限刚刚好。
-
-## 让 AI 帮你装（复制粘贴给 ZCode）
+本机已构建好的应用位于：
 
 ```text
-请帮我安装 zcode-ui-enhancer：
-1. git clone https://github.com/tobyatgithub/zcode-ui-enhancer 并进入目录
-2. 运行 python3 install.py，再运行 python3 install.py --install-hook
-3. 运行 python3 install.py --status 确认注入状态为"已注入"
-完成后告诉我重启 ZCode。
+native/ZCodeUsageMenu/dist/ZCodeUsageMenu.app
 ```
 
-## 升级兼容性检查（可选）
-
-ZCode 大版本升级后若担心样式层变化，可用原作者的兼容性分析方法论先体检：
+在 Finder 中双击 `ZCodeUsageMenu.app`，或终端执行：
 
 ```bash
-python3 update/analyze_ui_compat.py <旧版解包目录/out/renderer> <新版解包目录/out/renderer>
-# 关键：CSS 文件名(styles-*.css)是内容哈希，同名=样式层未变，可放心沿用注入
+open native/ZCodeUsageMenu/dist/ZCodeUsageMenu.app
 ```
 
-## TPS 速率计的计数原理
+应用是菜单栏模式，不会出现在 Dock 中。点击菜单栏的柱状图和 `out` 数字即可打开详情；底部依次有：打开数据目录、立即刷新、退出。
 
-- MutationObserver 监听整个 body；CJK≈1 tok/字、英文≈4 字符/tok（估算，徽章标 EST）。
-- 统计口径为**累计总量**：Σ 自 ZCode 启动起只增不减、不按对话切分；切换会话时新旧消息的 DOM 拆建由对称批次闸门（|净增|>100 tok 视为加载/卸载，忽略）整体过滤。
-- 防误计：净增量统计（删旧插新抵消，重渲染不计）、徽章自刷新跳过、React 注释节点不计、孤立小突变（<5 tok）不点亮、输出结束 10s 冷却期内的小增量不重新点亮。
-- 速率 4s 滑动窗口，分母封顶 4s（防回合越长越被稀释）；输出停止时数字冻结在末帧，不回落 0.0。
-- **可见性边界**：MutationObserver 只能看到当前渲染出来的内容——多会话并行时仅统计前台会话的输出，后台会话不计入；独立多窗口则各有自己的徽章。要全量统计请走 CLI 层的会话数据。
-- 单测：`node tests/test-logic.js`（9 项，注入前后的 tps.js 逻辑均可独立验证）。
+> 首次打开 macOS 可能提示“无法验证开发者”。这是本地构建且使用 ad-hoc 签名的正常现象：在 Finder 中右键 App → **打开** → 再确认打开即可。
 
-## 目录
+## 数据来源与统计口径
 
+应用以只读方式打开：
+
+```text
+~/.zcode/cli/db/db.sqlite
 ```
-inject/
-  neon.css           # 霓虹主题包（<style> 注入）
-  tps.js             # tok/s 速率计（<script> 注入，原样继承自原版）
-install.py           # 安装/回滚/hook 管理（解包→合并→打包→原子替换）
-update/analyze_ui_compat.py  # 升级兼容性分析（原作者方法论）
-tests/test-logic.js  # TPS 计数逻辑 9 项单测
-demo/               # README 配图生成（demo 页 + 无头浏览器截图，零依赖借系统 npx）
+
+统计语义与项目旧版 `usage-export.py` 一致：
+
+- `turn_usage`：累计/今日的回合、请求、输入、输出、推理、缓存读和工具调用。
+- “今日”按 macOS 本地时间的 00:00 过滤 `started_at`。
+- `input_tokens` 包含缓存读，界面把 `cache_read_input_tokens` 单独显示，不把它误表述为新增上下文。
+- 模型排行使用 `model_usage JOIN part(step-finish)` 的逐请求 token；不关联 `turn_usage`，避免一个回合多个请求造成重复统计。
+- 有些请求没有 `step-finish` 记录，因此模型排行可能少于累计输出——界面对此有说明。
+
+可选成本文件格式（金额为每 1M output token 的美元单价）：
+
+```json
+{
+  "GLM-5.3": { "output": 2.0 },
+  "k3": { "output": 1.5 }
+}
 ```
+
+## 从源码构建
+
+依赖：macOS 13+、Xcode / Swift 6、系统 `sqlite3`。
+
+```bash
+cd native/ZCodeUsageMenu
+swift test              # 数据层集成测试
+swift build -c release  # 编译 release 二进制
+```
+
+打包 `.app`：
+
+```bash
+cd native/ZCodeUsageMenu
+rm -rf dist
+mkdir -p dist/ZCodeUsageMenu.app/Contents/MacOS
+cp .build/release/ZCodeUsageMenu dist/ZCodeUsageMenu.app/Contents/MacOS/
+cp Info.plist dist/ZCodeUsageMenu.app/Contents/Info.plist
+codesign --force --deep --sign - dist/ZCodeUsageMenu.app
+```
+
+## 测试
+
+```bash
+cd native/ZCodeUsageMenu
+swift test
+```
+
+集成测试构建迷你 SQLite 数据库，覆盖：累计/当天聚合、缓存读统计、模型输出不重复计数及数据库缺失错误。
+
+## 旧注入代码（历史归档）
+
+`inject/`、`install.py`、`demo/` 与 `tests/test-*.js` 是旧实验性渲染层注入实现，保留供代码参考。它们**不应对 ZCode 3.11.2+ 运行**。
+
+如果历史 hook 曾自动改写过 `app.asar`，请确保 `~/.zcode/cli/config.json` 中没有执行 `install.py --auto` 的 `SessionStart` hook。当前环境已经移除了该 hook。
 
 ## License
 
-MIT。继承原版 [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer) 的 MIT 授权，版权信息见 [LICENSE](LICENSE)。
-
----
-
-**English (short)**: Unofficial renderer-layer enhancement for the ZCode desktop app on macOS — a tok/s output-rate meter and a neon theme, injected into `app.asar`. Forked from [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer) (Gitee, Windows edition). This edition adds an atomic-swap installer, slims the theme to a version-resilient decoration layer, and auto-reinstalls after ZCode upgrades via a SessionStart hook (a launchd daemon cannot write into app bundles under macOS App Management protection). Unofficial — use at your own risk; MIT licensed.
+MIT。旧注入架构继承自 [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer) 的 MIT 授权。
