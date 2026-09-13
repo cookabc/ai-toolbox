@@ -42,13 +42,31 @@ HOOK_TAG = 'zcode-ui-enhancer'
 CONFIG_PATH = os.path.expanduser('~/.zcode/cli/config.json')
 SNAPSHOT_DIR = os.path.expanduser('~/Library/Application Support/%s' % HOOK_TAG)
 LOG_PATH = os.path.expanduser('~/Library/Logs/%s.log' % HOOK_TAG)
-MARKER = '__zcodeTps'
+# is_injected() 的探针：查「最新加入的模块」的标记——老安装缺新模块时返回未注入，
+# 触发重跑 merge（逐模块幂等会只补缺的），避免「有 tps 就误判全装」的盲区。
+MARKER = '__zcodeUsagePanel'
 
-# (注入块文件, 开标签, 标记注释, 插入位置)
+# (注入块文件, 开标签, 标记注释, 插入位置, 该模块的幂等标记)
+# 注意顺序：badge-theme 最先（写 --zb-* 变量供徽章读）→ badge-dock（收养徽章）→ 各徽章。
 BLOCKS = [
-    ('neon.css', '<style>', '/* ===== ZCode 霓虹主题包', 'after-stylesheet'),
-    ('tps.js', '<script>', '/* ===== ZCode 输出速率计', 'before-body'),
+    ('neon.css', '<style>', '/* ===== ZCode 霓虹主题包', 'after-stylesheet', '__zcodeNeon'),
+    ('badge-theme.js', '<script>', '/* ===== ZCode 徽章主题', 'before-body', '__zcodeBadgeTheme'),
+    ('badge-dock.js', '<script>', '/* ===== ZCode 徽章 dock', 'before-body', '__zcodeBadgeDock'),
+    ('tps.js', '<script>', '/* ===== ZCode 输出速率计', 'before-body', '__zcodeTps'),
+    ('context-gauge.js', '<script>', '/* ===== ZCode 上下文水位计', 'before-body', '__zcodeCtxGauge'),
+    ('code-actions.js', '<script>', '/* ===== ZCode 代码块工具', 'before-body', '__zcodeCodeActions'),
+    ('nav-dots.js', '<script>', '/* ===== ZCode 消息锚点导航', 'before-body', '__zcodeNavDots'),
+    ('usage-panel.js', '<script>', '/* ===== ZCode 全量用量面板', 'before-body', '__zcodeUsagePanel'),
 ]
+
+# usage-export.py 不进 index.html：由 SessionStart hook 以 --serve 模式拉起，
+# 在 127.0.0.1:7391 提供 /usage 端点（实时聚合 db.sqlite），渲染层 fetch 它。
+# ZCode 渲染层 webSecurity:true 会挡 file:// fetch，但 CORS 放行的 localhost 可通。
+USAGE_EXPORT = 'usage-export.py'
+USAGE_HOOK_TAG = 'zcode-ui-enhancer-usage'
+USAGE_LOG = os.path.expanduser('~/Library/Logs/%s.log' % USAGE_HOOK_TAG)
+USAGE_HOOK_COMMAND = ('nohup python3 "%(py)s" --serve >>"%(log)s" 2>&1 &'
+                      % {'py': os.path.join(SNAPSHOT_DIR, 'inject', USAGE_EXPORT), 'log': USAGE_LOG})
 
 HOOK_COMMAND = ('nohup python3 "%(py)s" --auto >>"%(log)s" 2>&1 &'
                 % {'py': os.path.join(SNAPSHOT_DIR, 'install.py'), 'log': LOG_PATH})
@@ -104,29 +122,60 @@ def is_injected(asar_path):
 
 
 def merge_blocks(idx_path):
+    """逐模块幂等合并：标记不在 → 插入；标记在但内容与 inject/ 文件不一致 → 换新。
+    后者曾造成事故：只查标记导致代码修复后重跑 install 仍打进旧代码（跳过合并），
+    旧代码在启动路径上崩溃 → ZCode 白屏。内容比对是防复发的关键。"""
     with open(idx_path, encoding='utf-8') as f:
         html = f.read()
-    if MARKER in html:
-        log('已检测到注入标记，跳过合并（幂等）')
-        return False
     for probe in ('rel="stylesheet"', '</body>'):
         if probe not in html:
             raise RuntimeError('index.html 缺少注入锚点 %r，ZCode 版本结构可能已变，先跑 update/analyze_ui_compat.py' % probe)
     lines = html.split('\n')
-    for fname, opener, marker, where in BLOCKS:
+    changed = []
+    for fname, opener, marker, where, mod_marker in BLOCKS:
         with open(os.path.join(HERE, 'inject', fname), encoding='utf-8') as f:
             block = f.read().rstrip('\n')
         closer = opener.replace('<', '</')
         wrapped = opener + '\n' + block + '\n' + closer
-        if where == 'after-stylesheet':
-            li = next(i for i, l in enumerate(lines) if 'rel="stylesheet"' in l)
-            lines = lines[:li + 1] + wrapped.split('\n') + lines[li + 1:]
+        if mod_marker in html:
+            # 标记已在：比对块内容，一致才跳过
+            if _block_in_lines(lines, marker, wrapped):
+                continue
+            lines = _replace_block(lines, marker, wrapped, opener)
+            changed.append(fname + '(更新)')
         else:
-            bi = next(i for i, l in enumerate(lines) if l.strip() == '</body>')
-            lines = lines[:bi] + wrapped.split('\n') + lines[bi:]
+            if where == 'after-stylesheet':
+                li = next(i for i, l in enumerate(lines) if 'rel="stylesheet"' in l)
+                lines = lines[:li + 1] + wrapped.split('\n') + lines[li + 1:]
+            else:
+                bi = next(i for i, l in enumerate(lines) if l.strip() == '</body>')
+                lines = lines[:bi] + wrapped.split('\n') + lines[bi:]
+            changed.append(fname)
+    if not changed:
+        log('全部注入块与最新代码一致，跳过合并（幂等）')
+        return False
     with open(idx_path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
+    log('  合并模块: %s' % ', '.join(changed))
     return True
+
+
+def _block_in_lines(lines, marker, wrapped):
+    """wrapped 块（按行）是否完整存在于 lines 中。"""
+    wl = wrapped.split('\n')
+    for i in range(len(lines) - len(wl) + 1):
+        if lines[i:i + len(wl)] == wl:
+            return True
+    return False
+
+
+def _replace_block(lines, marker, wrapped, opener):
+    """按标记定位旧块（与 strip_blocks 同定位法），整块替换为 wrapped。"""
+    closer = opener.replace('<', '</')
+    mi = next(i for i, l in enumerate(lines) if marker in l)
+    oi = max(i for i in range(mi) if lines[i].strip() == opener)
+    ci = next(i for i in range(mi, len(lines)) if lines[i].strip() == closer)
+    return lines[:oi] + wrapped.split('\n') + lines[ci + 1:]
 
 
 def fix_unpacked(res, et):
@@ -155,9 +204,16 @@ def do_install(res):
     npx, env = find_npx()
 
     log('[1/6] 备份官方包 -> app.asar.old_v2')
+    # 关键修复：只在「当前 asar 是干净的（未注入）」时才更新备份。
+    # 旧逻辑只在 old_v2 不存在时备份一次——于是 old_v2 永远是「第一次注入前的旧版」，
+    # 重装 ZCode 后 uninstall 会把版本错配的旧包换回去（曾导致无法启动）。
+    # 现在：当前包干净才备份 → old_v2 始终是「最近的干净官方版」。
     old = os.path.join(res, 'app.asar.old_v2')
-    if not os.path.isfile(old):
+    if not is_injected(asar_path):
         shutil.copy2(asar_path, old)
+    elif not os.path.isfile(old):
+        # 当前已注入且没有干净备份：无法安全备份，留个标记让 uninstall 走 strip 兜底
+        log('  当前已注入且无干净备份，跳过备份（uninstall 将用 strip 兜底）')
 
     log('[2/6] 解包 app.asar')
     if os.path.isdir(et):
@@ -216,7 +272,7 @@ def strip_blocks(idx_path):
     with open(idx_path, encoding='utf-8') as f:
         lines = f.read().split('\n')
     removed = 0
-    for fname, opener, marker, where in BLOCKS:
+    for fname, opener, marker, where, _mod in BLOCKS:
         mi = next((i for i, l in enumerate(lines) if marker in l), None)
         if mi is None:
             continue
@@ -299,6 +355,22 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2, ensure_ascii=False)
 
 
+def _upsert_session_hook(entries, tag, hook_obj):
+    """在 SessionStart entries 里按 tag 幂等地插入/更新一个 hook。"""
+    for entry in entries:
+        for h in entry.get('hooks', []):
+            if tag in h.get('command', ''):
+                h.update(hook_obj)   # 快照路径变化时同步
+                return
+    entries.append({'hooks': [hook_obj]})
+
+
+def _is_our_hook(command):
+    """是否本工具（含已废弃模块）的 hook——快照路径是唯一可靠标识。
+    废弃模块（如 search-server）的快照文件可能已删，但 command 仍指向快照目录。"""
+    return SNAPSHOT_DIR in command
+
+
 def cmd_install_hook():
     refresh_snapshot()
     cfg = load_config()
@@ -306,27 +378,31 @@ def cmd_install_hook():
     hooks['enabled'] = True
     events = hooks.setdefault('events', {})
     entries = events.setdefault('SessionStart', [])
-    hook_obj = {
+    # 先清理本工具已废弃的 hook（如旧版 search-server），再 upsert 当前的。
+    # upsert 只增不删，废弃 hook 不主动清会一直留在 config 里。
+    active_cmds = (HOOK_COMMAND, USAGE_HOOK_COMMAND)
+    for entry in entries:
+        entry['hooks'] = [h for h in entry.get('hooks', [])
+                          if not _is_our_hook(h.get('command', '')) or h.get('command', '') in active_cmds]
+    entries[:] = [e for e in entries if e.get('hooks')]
+    # schema: SessionStart 是 {matcher?, hooks:[...]} 的数组，hook 对象嵌在 hooks 键下
+    _upsert_session_hook(entries, HOOK_TAG, {
         'type': 'command',
         'command': HOOK_COMMAND,
         'timeoutMs': 5000,
         'statusMessage': '检查 UI 增强注入状态',
-    }
-    # schema: SessionStart 是 {matcher?, hooks:[...]} 的数组，hook 对象嵌在 hooks 键下
-    target = None
-    for entry in entries:
-        for h in entry.get('hooks', []):
-            if HOOK_TAG in h.get('command', ''):
-                target = h
-    if target is None:
-        entries.append({'hooks': [hook_obj]})
-    else:
-        target.update(hook_obj)  # 快照路径变化时同步
+    })
+    _upsert_session_hook(entries, USAGE_HOOK_TAG, {
+        'type': 'command',
+        'command': USAGE_HOOK_COMMAND,
+        'timeoutMs': 8000,
+        'statusMessage': '拉起用量服务 /usage',
+    })
     save_config(cfg)
-    log('SessionStart hook 已安装: ZCode 启动/恢复会话时自动检测并后台重注入')
+    log('SessionStart hook 已安装: 自动重注入 + 用量服务')
     log('  配置: %s' % CONFIG_PATH)
     log('  快照: %s' % SNAPSHOT_DIR)
-    log('  日志: %s' % LOG_PATH)
+    log('  日志: %s / %s' % (LOG_PATH, USAGE_LOG))
     log('新开会话后生效。')
 
 
@@ -337,7 +413,10 @@ def cmd_remove_hook():
     for event, entries in events.items():
         keep = []
         for entry in entries:
-            hs = [h for h in entry.get('hooks', []) if HOOK_TAG not in h.get('command', '')]
+            hs = [h for h in entry.get('hooks', [])
+                  if HOOK_TAG not in h.get('command', '')
+                  and USAGE_HOOK_TAG not in h.get('command', '')
+                  and 'zcode-ui-enhancer-search' not in h.get('command', '')]
             if len(hs) != len(entry.get('hooks', [])):
                 removed += 1
             if hs:

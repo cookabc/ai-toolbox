@@ -36,10 +36,10 @@
     'pointer-events:auto;cursor:pointer;user-select:none;-webkit-user-select:none;' +
     'display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:13px;' +
     'border:1px solid transparent;' +
-    'background:linear-gradient(rgb(10 8 20 / 0.78), rgb(10 8 20 / 0.78)) padding-box,' +
+    'background:linear-gradient(var(--zb-bg), var(--zb-bg)) padding-box,' +
     'linear-gradient(135deg, rgb(64 153 255 / 0.55), rgb(123 92 229 / 0.55)) border-box;' +
-    'box-shadow:0 0 22px rgb(96 132 255 / 0.28);' +
-    'font-family:ui-monospace,Consolas,monospace;color:#dbe4ff;' +
+    'box-shadow:0 0 22px var(--zb-glow);' +
+    'font-family:ui-monospace,Consolas,monospace;color:var(--zb-text);' +
     'opacity:1;transition:opacity .5s ease, box-shadow .3s ease;white-space:nowrap;';
   badge.innerHTML =
     '<span id="zcode-tps-bolt" style="font-size:13px;filter:drop-shadow(0 0 6px rgb(96 165 250 / .9))">⚡</span>' +
@@ -56,7 +56,9 @@
   var elBolt = badge.querySelector('#zcode-tps-bolt');
   var glyph  = badge.querySelector('#zcode-tps-glyph');
   var spark = badge.querySelector('#zcode-tps-spark');
+  if (!elRate || !elMeta || !elBolt || !glyph || !spark) return;   // DOM 异常时安全退出，不阻断官方启动
   var sctx = spark.getContext('2d');
+  if (!sctx) return;
 
   function applyLayout() {
     spark.style.display = expanded ? '' : 'none';
@@ -184,7 +186,7 @@
     if (live) {
       if (r > peakAll) peakAll = r;
       badge.style.opacity = '1';
-      badge.style.boxShadow = '0 0 26px rgb(96 132 255 / 0.45)';
+      badge.style.boxShadow = '0 0 26px var(--zb-glow)';
       elBolt.textContent = '⚡';
       // 窗口内暂无新样本（流式停顿/收尾）时冻结在上一帧速率，避免先掉到 0.0 的 lag
       if (r >= 0.05) elRate.textContent = r.toFixed(1);
@@ -197,7 +199,7 @@
       }
       elBolt.textContent = '💤';
       badge.style.opacity = '1';
-      badge.style.boxShadow = '0 0 18px rgb(96 132 255 / 0.15)';
+      badge.style.boxShadow = '0 0 18px var(--zb-glow)';
     }
     drawSpark();
   }, TICK);

@@ -64,7 +64,17 @@
     <button class="bg-primary">发送</button>
   </div>
 
+  <script>
+  // 真实数据联调：指向本机用量服务（仅 demo 用，生产注入块不带这段）
+  window.ZCODE_USAGE_URL = 'http://127.0.0.1:7391/usage';
+  </script>
+  <script src="../inject/badge-theme.js"></script>
+  <script src="../inject/badge-dock.js"></script>
   <script src="../inject/tps.js"></script>
+  <script src="../inject/context-gauge.js"></script>
+  <script src="../inject/code-actions.js"></script>
+  <script src="../inject/nav-dots.js"></script>
+  <script src="../inject/usage-panel.js"></script>
   <script>
   // 假流式引擎：三阶段 —— 垫量(80 tok/s × 25s) → 休息(11s, 触发 💤 与冷却期) → 正常输出(50 tok/s)
   (function () {
