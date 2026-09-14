@@ -1,113 +1,120 @@
-# ZCode Usage Menu（macOS）
+<h1 align="center">AI Usage · AI 用量</h1>
+<p align="center">把 AI 编程工具的本地用量，放进菜单栏的一角。</p>
+<p align="center"><strong>macOS 13+</strong> · SwiftUI · 本地数据 · MIT</p>
 
-**独立的 macOS 菜单栏用量面板**：只读 ZCode 本地用量数据库，展示今日/累计 token、缓存命中、工具调用和模型排行。**不修改 ZCode.app、不注入 `app.asar`、不会影响 ZCode 启动。**
+![AI Usage：原生菜单栏面板，统一查看 ZCode、Codex 和 Claude Code 用量](docs/images/hero.png)
 
-> ⚠️ **旧的 `app.asar` 渲染层注入方案已退役。** 它在本机 ZCode 3.11.2 上曾造成 renderer 白屏和无法进入应用。请勿运行根目录的 `install.py`、`install.py --install-hook` 或向 ZCode 安装包注入 `inject/*.js`。它们仅作为历史实现保留，不是支持的安装路径。
+<p align="center">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#界面预览">界面预览</a> ·
+  <a href="docs/data-sources.md">统计口径</a> ·
+  <a href="#开发与验证">开发与验证</a>
+</p>
 
-## 多工具面板
+AI Usage 是一个轻量的 macOS 菜单栏应用，读取 **ZCode、Codex 和 Claude Code** 已保存在本机的用量记录。查看今日输出、累计 token 和模型排行，无需登录额外账户，也不向其他应用注入代码。
 
-顶部可切换 **总览 / ZCode / Codex / Claude Code**，选择会保存。各来源独立后台刷新；某个来源读取失败时不影响其他来源。总览按工具列出已记录输出，菜单栏只汇总输出；来源不齐全时标注“部分”。这不是厂商账单或额度统计。
+## 一眼看到需要的信息
 
-- **ZCode**：只读 `~/.zcode/cli/db/db.sqlite`，保留现有 SQL 聚合。
-- **Codex**：扫描 `~/.codex/sessions` 和 `archived_sessions` 的 JSONL。只累加逐响应 `payload.usage`，以响应 ID 去重，不累加回合/线程累计字段。模型通过回合上下文关联。
-- **Claude Code**：扫描 `~/.claude/projects` 的主会话及 subagents JSONL，只解码 assistant 消息的 usage。相同消息/请求的多份记录只保留最新记录。
-- 日志读取按行限制内存，不保留会话正文或工具参数，不扫描认证配置。解析不了的记录标注为部分数据；缺失字段显示“—”，显式零值才显示 0。
-- Codex/Claude 的输入和缓存按原始记录分别显示，不套用 ZCode 的非缓存输入减法。两者的回合和工具计数暂不支持。
-- 本机首次 Codex 扫描约 17 秒，期间面板仍可切换；未变化的文件复用内存快照，文件变化或跨日后重新扫描。价格估算暂限 ZCode。
-- 自动测试使用合成数据。显式真实数据校验：`USAGE_LOCAL_SMOKE=1 swift test --filter MultiProviderTests/testLocalSourcesWhenExplicitlyEnabled`（在 Swift 工程目录运行，仅输出聚合数和耗时）。
+| 功能 | 使用体验 |
+| --- | --- |
+| 菜单栏用量 | 常驻显示当天已记录输出，点击展开详情 |
+| 三个来源，一个面板 | 总览并排比较各工具；点击卡片进入详情，自动保存所选标签 |
+| 今日与累计 | 输出、输入、缓存、推理及来源支持的活动指标，分别展示 |
+| 安静地后台刷新 | 每 30 秒刷新，各来源独立读取；支持刷新按钮和 `⌘R` |
+| 清楚的数据状态 | 区分加载、读取失败和部分数据，失败时保留上次成功结果 |
+| 原生深浅色 | 自适应系统外观，清晰卡片、语义色与独立应用图标 |
 
-## 功能
+## 界面预览
 
-- 菜单栏常驻显示当天输出，例如 `185k 输出`；应用启动即后台预热，点击菜单栏只读内存快照；每 30 秒后台刷新，点击展开后可手动刷新。
-- 原生 SwiftUI Popover，使用自适应 Material 卡片和 macOS 语义色，深浅色自动适配：
-  - **今日主卡**：大号今日输出、输入/回合/请求/工具调用，以及缓存读/缓存创建/非缓存输入的构成条。
-  - **累计卡**：Token（输入、输出、推理、缓存读）与活动（回合、请求、工具调用）分组展示。
-  - **模型卡**：前四个模型按已记录输出排序，使用相对水平条比较输出量。
-  - **可选成本**：在 `~/.zcode/cli/usage-prices.json` 填入输出单价后显示。
-  - **状态与操作**：刷新失败时保留旧数据并提示；顶部提供刷新和菜单（打开数据目录、退出）。
-- 自动跟随 macOS 浅色/深色模式。
-- 读取失败时保留上一次成功数据，并提供明确的无数据状态。
-- ZCode 没有启动也能读取历史数据；菜单栏 App 自己退出或崩溃不会影响 ZCode。
+<table>
+  <tr>
+    <td align="center"><strong>浅色 · 清楚看见今日与累计</strong></td>
+    <td align="center"><strong>深色 · 同样清晰的统计层级</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/detail-light.png" alt="浅色模式：今日输出、输入构成、累计用量和模型排行" width="440"></td>
+    <td><img src="docs/images/detail-dark.png" alt="深色模式：同一原生用量详情面板" width="440"></td>
+  </tr>
+</table>
 
-## 安装与启动
+<sub>图片由项目中的真实 SwiftUI 视图渲染，使用合成示例数据，不包含个人会话内容。模型名称为示例。</sub>
 
-本机已构建好的应用位于：
+## 快速开始
 
-```text
-native/ZCodeUsageMenu/dist/ZCodeUsageMenu.app
-```
-
-在 Finder 中双击 `ZCodeUsageMenu.app`，或终端执行：
-
-```bash
-open native/ZCodeUsageMenu/dist/ZCodeUsageMenu.app
-```
-
-应用是菜单栏模式，不会出现在 Dock 中。点击菜单栏的工具名称与输出数字打开详情；顶部切换工具，右上角 `…` 菜单提供刷新、打开当前来源目录和退出。
-
-> 首次打开 macOS 可能提示“无法验证开发者”。这是本地构建且使用 ad-hoc 签名的正常现象：在 Finder 中右键 App → **打开** → 再确认打开即可。
-
-## 数据来源与统计口径
-
-应用以只读方式打开：
-
-```text
-~/.zcode/cli/db/db.sqlite
-```
-
-统计语义与项目旧版 `usage-export.py` 一致：
-
-- `turn_usage`：累计/今日的回合、请求、输入、输出、推理、缓存读和工具调用。
-- “今日”按 macOS 本地时间的 00:00 过滤 `started_at`。
-- `input_tokens` 包含缓存读，界面把 `cache_read_input_tokens` 单独显示，不把它误表述为新增上下文。
-- 模型排行使用 `model_usage JOIN part(step-finish)` 的逐请求 token；不关联 `turn_usage`，避免一个回合多个请求造成重复统计。
-- 有些请求没有 `step-finish` 记录，因此模型排行可能少于累计输出——界面对此有说明。
-
-可选成本文件格式（金额为每 1M output token 的美元单价）：
-
-```json
-{
-  "GLM-5.3": { "output": 2.0 },
-  "k3": { "output": 1.5 }
-}
-```
-
-## 从源码构建
-
-依赖：macOS 13+、Xcode / Swift 6、系统 `sqlite3`。
+需要 **macOS 13+** 和 **Xcode / Swift 6**。使用系统 SwiftUI、AppKit 与 SQLite，无第三方 Swift 包依赖。
 
 ```bash
-cd native/ZCodeUsageMenu
-swift test              # 数据层集成测试
-swift build -c release  # 编译 release 二进制
-```
-
-打包 `.app`：
-
-```bash
-cd native/ZCodeUsageMenu
-rm -rf dist
-mkdir -p dist/ZCodeUsageMenu.app/Contents/MacOS
-cp .build/release/ZCodeUsageMenu dist/ZCodeUsageMenu.app/Contents/MacOS/
-cp Info.plist dist/ZCodeUsageMenu.app/Contents/Info.plist
-codesign --force --deep --sign - dist/ZCodeUsageMenu.app
-```
-
-## 测试
-
-```bash
-cd native/ZCodeUsageMenu
+git clone https://github.com/cookabc/status-bar.git
+cd status-bar
 swift test
+bash scripts/package-app.sh
+open dist/ZCodeUsageMenu.app
 ```
 
-集成测试构建迷你 SQLite 数据库，覆盖：累计/当天聚合、缓存读统计、模型输出不重复计数及数据库缺失错误。
+应用启动后显示在 **macOS 菜单栏**，不会出现在 Dock 中。首次启动默认显示总览；点击工具卡片或顶部标签查看详情。
 
-## 旧注入代码（历史归档）
+打包脚本生成本地 ad-hoc 签名应用，未做 Apple 公证。若 macOS 阻止打开，请确认构建来源，并按系统提示允许打开；本项目不要求关闭系统安全保护。
 
-`inject/`、`install.py`、`demo/` 与 `tests/test-*.js` 是旧实验性渲染层注入实现，保留供代码参考。它们**不应对 ZCode 3.11.2+ 运行**。
+## 如何理解数字
 
-如果历史 hook 曾自动改写过 `app.asar`，请确保 `~/.zcode/cli/config.json` 中没有执行 `install.py --auto` 的 `SessionStart` hook。当前环境已经移除了该 hook。
+- **`0`**：该指标在所统计的记录中为零。
+- **`—`**：指标不支持、字段不完整，或今日数据尚未更新。
+- **部分**：存在来源缺失、读取失败或无法确认用量的记录。
+- **今日**：按 macOS 本地日期统计，跨日后未更新的旧快照不计入今日。
+- **累计**：当前可读取的本地历史记录，日志删除或迁移可能影响范围。
+
+这些数字是 **本机已记录用量**，不是厂商账单或订阅剩余额度。不同工具的输入、缓存和回合含义不同，面板保留来源差异。
+
+| 来源 | 读取位置 |
+| --- | --- |
+| ZCode | `~/.zcode/cli/db/db.sqlite` |
+| Codex | `~/.codex/sessions`、`~/.codex/archived_sessions` |
+| Claude Code | `~/.claude/projects`，包括 subagents |
+
+ZCode 可配置模型输出单价，展示已定价完成步骤的成本小计。去重规则、缓存语义、日志限制和价格配置详见 [数据来源与统计口径](docs/data-sources.md)。
+
+## 本地数据与读取边界
+
+应用不上传会话内容，不读取认证配置，也不向源数据库写入业务数据。日志逐行处理，不保留会话正文或工具参数。
+
+ZCode 无法直接只读打开时，仅在没有 WAL 或回滚日志且源文件保持稳定的条件下使用私有临时副本。Codex 和 Claude 的未变化文件集合复用内存快照；历史规模较大或文件变化时，扫描可能需要一些时间。
+
+工具升级可能改变数据库或日志格式。无法识别的格式会显示状态提示；支持当前解析格式不代表兼容所有历史或未来版本。
+
+## 开发与验证
+
+```text
+Assets/       应用图标及生成提示词
+Sources/      SwiftUI 界面、数据来源与刷新逻辑
+Tests/        聚合、去重、缓存、异常和状态测试
+scripts/      macOS 应用打包
+docs/         统计口径与界面图片
+```
+
+```bash
+swift test                          # 默认使用合成数据
+swift build -c release              # 编译 release 二进制
+bash scripts/package-app.sh        # 打包并验证签名
+```
+
+按需读取本机真实记录，只输出聚合数量与耗时；此检查要求三个来源均有可识别记录：
+
+```bash
+USAGE_LOCAL_SMOKE=1 swift test --filter MultiProviderTests/testLocalSourcesWhenExplicitlyEnabled
+```
+
+重新生成 README 图片，不读取本机会话：
+
+```bash
+USAGE_RENDER_DOCS=1 swift test --filter DocumentationRenderTests
+```
+
+## 从旧注入版迁移
+
+本仓库现仅维护原生菜单栏应用。旧的 `app.asar` 注入、安装器和 JavaScript 演示已移除。
+
+若曾安装自动注入 hook，请检查 `~/.zcode/cli/config.json`，移除调用旧 `install.py --auto` 的 `SessionStart` hook。删除仓库中的旧代码不会自动清理外部 hook，也不会恢复已修改的 ZCode 安装包。
 
 ## License
 
-MIT。旧注入架构继承自 [Rick_ZhangR1/zcode-ui-enhancer](https://gitee.com/Rick_ZhangR1/zcode-ui-enhancer) 的 MIT 授权。
+[MIT](LICENSE)。保留原项目及 macOS 版本贡献者的版权声明。
