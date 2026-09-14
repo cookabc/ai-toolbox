@@ -11,24 +11,24 @@ struct UsagePopoverView: View {
                 ForEach(UsageProviderID.allCases) { id in Text(id.title).tag(id) }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
-            if let error = model.errorMessage, model.snapshot != nil {
-                staleBanner(error)
+            .labelsHidden()
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
+            if let warning = model.sourceWarning(model.selectedProvider) {
+                staleBanner(warning)
             }
             if model.selectedProvider == .overview {
-                overview.padding(10)
+                overview.padding(.horizontal, 14).padding(.bottom, 14)
             } else if let snapshot = model.snapshot {
-                // The model list is bounded to four rows in UsageRepository. A content-driven
-                // popover keeps every selected metric visible instead of hiding it in a scroll view.
-                VStack(spacing: 6) {
-                    Text(snapshot.coverage.note + (snapshot.coverage.skippedRecords > 0 ? " · 部分记录跳过" : ""))
+                VStack(spacing: 10) {
+                    Text(snapshot.coverage.note)
                         .font(.caption2).foregroundStyle(.secondary)
                     todayCard(snapshot.today)
                     lifetimeCard(snapshot.totals)
                     if !snapshot.models.isEmpty { modelsCard(snapshot.models) }
                 }
-                .padding(10)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
             } else {
                 emptyState
                     .frame(maxWidth: .infinity, minHeight: 260)
@@ -37,40 +37,88 @@ struct UsagePopoverView: View {
         }
         .frame(width: 400)
         .fixedSize(horizontal: false, vertical: true)
-        .background(.regularMaterial)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var overview: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("本机已记录输出 · 非账单或订阅额度")
-                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Text("本机已记录输出")
+                    .font(.caption.weight(.medium))
+                Spacer()
+                Text("非账单或订阅额度")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 2)
             ForEach(model.sourceIDs) { id in
-                SurfaceCard {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
-                            Text(id.title).font(.headline)
-                            Spacer()
-                            if model.states[id]?.isRefreshing == true {
-                                ProgressView().controlSize(.small)
+                Button { model.selectedProvider = id } label: {
+                    SurfaceCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 8) {
+                                Image(systemName: id == .zcode ? "square.stack.3d.up" : (id == .codex ? "terminal" : "command"))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(sourceColor(id))
+                                    .frame(width: 28, height: 28)
+                                    .background(sourceColor(id).opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                                Text(id.title).font(.subheadline.weight(.semibold))
+                                Spacer()
+                                if model.states[id]?.isRefreshing == true {
+                                    ProgressView().controlSize(.small)
+                                } else if let snapshot = model.states[id]?.snapshot {
+                                    Text(snapshot.refreshedAt, style: .time)
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if let snapshot = model.states[id]?.snapshot {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(model.todayDisplay(snapshot.today.outputTokens, metric: .output, provider: id))
+                                        .font(.system(size: 25, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.primary)
+                                    Text("今日输出").font(.caption2).foregroundStyle(.secondary)
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(snapshot.coverage.metrics.contains(.output) ? Format.token(snapshot.totals.outputTokens) : "—")
+                                            .font(.system(.subheadline, design: .rounded).weight(.medium))
+                                        Text("累计输出").font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .monospacedDigit()
+                                if let warning = model.sourceWarning(id) {
+                                    Label(warning, systemImage: "exclamationmark.circle")
+                                        .font(.caption2).foregroundStyle(.orange)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            } else if let error = model.states[id]?.errorMessage {
+                                Text(error).font(.caption2).foregroundStyle(.orange)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                Text("正在读取本地记录…").font(.caption).foregroundStyle(.secondary)
                             }
                         }
-                        if let snapshot = model.states[id]?.snapshot {
-                            HStack {
-                                Text("今日 " + (snapshot.coverage.metrics.contains(.output) ? Format.token(snapshot.today.outputTokens) : "—"))
-                                Spacer()
-                                Text("累计 " + (snapshot.coverage.metrics.contains(.output) ? Format.token(snapshot.totals.outputTokens) : "—"))
-                            }.monospacedDigit()
-                        }
-                        if let error = model.states[id]?.errorMessage {
-                            Text(error).font(.caption2).foregroundStyle(.orange)
-                        } else if model.states[id]?.snapshot == nil {
-                            Text("正在探测本地记录…").font(.caption2).foregroundStyle(.secondary)
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                 }
+                .buttonStyle(.plain)
+                .help("查看 \(id.title) 用量")
             }
-            Text("不同工具的输入、缓存和回合口径不同，分开显示；切换标签查看详情。")
+            Label("各工具分别统计，点击卡片查看详情", systemImage: "info.circle")
                 .font(.caption2).foregroundStyle(.secondary)
+                .padding(.top, 2)
+        }
+    }
+
+    private func sourceColor(_ id: UsageProviderID) -> Color {
+        switch id {
+        case .zcode: .blue
+        case .codex: .indigo
+        case .claude: .orange
+        case .overview: .blue
         }
     }
 
@@ -78,16 +126,25 @@ struct UsagePopoverView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 24, height: 24)
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
             Text("AI 用量")
                 .font(.system(.headline, design: .rounded))
             Text(headerStatus)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
+            Button(action: model.refresh) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.isRefreshing)
+            .help("刷新用量（⌘R）")
+            .accessibilityLabel("刷新用量")
+            .keyboardShortcut("r", modifiers: .command)
             OverflowMenuButton(
                 isRefreshing: model.isRefreshing,
                 refresh: model.refresh,
@@ -97,15 +154,18 @@ struct UsagePopoverView: View {
             .frame(width: 28, height: 28)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
     }
 
     private var headerStatus: String {
         if model.isRefreshing { return "· 正在刷新…" }
-        // Overview has no single snapshot; fall back to the newest source refresh time.
-        let refreshedAt = model.snapshot?.refreshedAt ?? model.sourceIDs.compactMap { model.states[$0]?.snapshot?.refreshedAt }.max()
-        if let refreshedAt {
-            return "· \(refreshedAt.formatted(date: .omitted, time: .shortened)) 更新"
+        if model.errorMessage != nil && model.snapshot == nil { return "· 读取失败" }
+        if model.selectedProvider == .overview {
+            return "· \(model.availableSources.count)/\(model.sourceIDs.count) 个来源"
+        }
+        if let refreshedAt = model.lastCheckedAt {
+            let dateStyle: Date.FormatStyle.DateStyle = model.isToday(model.selectedProvider) ? .omitted : .abbreviated
+            return "· \(refreshedAt.formatted(date: dateStyle, time: .shortened)) 检查"
         }
         return "· 等待读取"
     }
@@ -120,7 +180,7 @@ struct UsagePopoverView: View {
                         Text("今日输出")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.accentColor)
-                        Text(model.display(totals.outputTokens, metric: .output))
+                        Text(model.todayDisplay(totals.outputTokens, metric: .output))
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(.primary)
@@ -131,19 +191,19 @@ struct UsagePopoverView: View {
                         alignment: .leading,
                         spacing: 5
                     ) {
-                        compactMetric("输入", model.display(totals.inputTokens, metric: .input))
-                        compactMetric("回合", model.display(totals.turns, metric: .turns))
-                        compactMetric("请求", model.display(totals.requests, metric: .requests))
-                        compactMetric("工具", model.display(totals.toolCalls, metric: .tools))
+                        compactMetric("输入", model.todayDisplay(totals.inputTokens, metric: .input))
+                        compactMetric("回合", model.todayDisplay(totals.turns, metric: .turns))
+                        compactMetric("请求", model.todayDisplay(totals.requests, metric: .requests))
+                        compactMetric("工具", model.todayDisplay(totals.toolCalls, metric: .tools))
                     }
                 }
                 Divider().opacity(0.55)
-                if model.snapshot?.coverage.supportsInputComposition == true {
+                if model.snapshot?.coverage.supportsInputComposition == true && model.isToday(model.selectedProvider) {
                     inputComposition(totals)
                 } else {
                     HStack {
-                        compactMetric("缓存读", model.display(totals.cacheReadInputTokens, metric: .cacheRead))
-                        compactMetric("缓存" + (model.snapshot?.coverage.cacheWriteLabel ?? "写入"), model.display(totals.cacheCreationInputTokens, metric: .cacheWrite))
+                        compactMetric("缓存读", model.todayDisplay(totals.cacheReadInputTokens, metric: .cacheRead))
+                        compactMetric("缓存" + (model.snapshot?.coverage.cacheWriteLabel ?? "写入"), model.todayDisplay(totals.cacheCreationInputTokens, metric: .cacheWrite))
                     }
                     Text("输入及缓存均按来源记录；不推算非缓存输入")
                         .font(.caption2).foregroundStyle(.secondary)
@@ -213,12 +273,14 @@ struct UsagePopoverView: View {
                 .foregroundStyle(.secondary)
                 if let cost = model.optionalOutputCost {
                     HStack {
-                        Text("输出成本估算")
+                        Text("已定价模型输出成本")
                         Spacer()
                         Text(Format.cost(cost)).monospacedDigit()
                     }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    Text("仅含有价格的完成步骤记录，非完整费用或账单。")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
@@ -266,12 +328,14 @@ struct UsagePopoverView: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            Text("显示上次成功数据：\(error)")
-                .lineLimit(1)
+            Text(error)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
-            Button("重试") { model.refresh() }
-                .buttonStyle(.borderless)
-                .disabled(model.isRefreshing)
+            if model.errorMessage != nil {
+                Button("重试") { model.refresh() }
+                    .buttonStyle(.borderless)
+                    .disabled(model.isRefreshing)
+            }
         }
         .font(.caption)
         .padding(.horizontal, 18)
@@ -283,19 +347,21 @@ struct UsagePopoverView: View {
         VStack(spacing: 13) {
             ZStack {
                 Circle().fill(Color.accentColor.opacity(0.12)).frame(width: 56, height: 56)
-                Image(systemName: "externaldrive.badge.exclamationmark")
+                Image(systemName: model.isRefreshing ? "externaldrive" : "externaldrive.badge.exclamationmark")
                     .font(.title2)
                     .foregroundStyle(Color.accentColor)
             }
-            Text("还没有可读的用量数据")
+            if model.isRefreshing { ProgressView().controlSize(.small) }
+            Text(model.isRefreshing ? "正在读取本地记录" : (model.errorMessage == nil ? "还没有可读的用量数据" : "暂时无法读取 \(model.selectedProvider.title)"))
                 .font(.headline)
-            Text(model.errorMessage ?? "等待所选工具写入可识别的本地用量记录。")
+            Text(model.isRefreshing ? "首次读取可能需要一些时间，可先切换到其他工具。" : (model.errorMessage ?? "等待所选工具写入可识别的本地用量记录。"))
                 .multilineTextAlignment(.center)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 280)
             HStack(spacing: 12) {
                 Button("重新读取") { model.refresh() }
+                    .disabled(model.isRefreshing)
                 Button("打开数据目录") { openDataDirectory() }
                     .buttonStyle(.borderless)
             }
@@ -334,11 +400,12 @@ private struct SurfaceCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(compact ? 8 : 10)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(compact ? 10 : 12)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.035), radius: 4, x: 0, y: 2)
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
             }
     }
 }

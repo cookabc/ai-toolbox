@@ -37,6 +37,7 @@ struct OverflowMenuButton: NSViewRepresentable {
 
         @MainActor @objc func showMenu(_ sender: NSButton) {
             let menu = NSMenu()
+            menu.autoenablesItems = false
             let refreshItem = NSMenuItem(
                 title: "刷新用量",
                 action: #selector(refreshUsage),
@@ -58,7 +59,7 @@ struct OverflowMenuButton: NSViewRepresentable {
             menu.addItem(.separator())
 
             let quitItem = NSMenuItem(
-                title: "退出 ZCode 用量",
+                title: "退出 AI 用量",
                 action: #selector(quitApp),
                 keyEquivalent: "q"
             )
