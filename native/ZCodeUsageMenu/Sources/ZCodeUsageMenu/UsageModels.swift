@@ -50,6 +50,7 @@ struct UsageSnapshot: Equatable, Sendable {
     let totals: UsageTotals
     let today: UsageTotals
     let models: [ModelUsage]
+    var coverage = UsageCoverage()
 
     static let empty = UsageSnapshot(
         refreshedAt: .now, totals: .zero, today: .zero, models: []
