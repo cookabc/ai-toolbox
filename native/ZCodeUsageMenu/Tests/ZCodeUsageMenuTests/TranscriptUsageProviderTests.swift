@@ -110,6 +110,23 @@ final class TranscriptUsageProviderTests: XCTestCase {
         XCTAssertEqual(zero.totals.cacheReadInputTokens, 0)
     }
 
+    func testCodexRealFieldNamesIncludeCacheWriteInputTokens() throws {
+        // Codex writes cache_write_input_tokens (not cache_creation_input_tokens);
+        // missing this key made the cache-write column render as unavailable.
+        var line = codex("real", input: 32837, output: 118)
+        line["payload"] = ["response_id": "real", "usage": [
+            "input_tokens": 32837, "cached_input_tokens": 13610,
+            "cache_write_input_tokens": 19224, "output_tokens": 118,
+            "reasoning_output_tokens": 11, "total_tokens": 32837
+        ]]
+        try write("sessions/real.jsonl", lines: [line])
+        let snapshot = try codexProvider().load()
+        XCTAssertEqual(snapshot.totals.cacheCreationInputTokens, 19224)
+        XCTAssertEqual(snapshot.totals.cacheReadInputTokens, 13610)
+        XCTAssertEqual(snapshot.totals.reasoningTokens, 11)
+        XCTAssertTrue(snapshot.coverage.metrics.contains(.cacheWrite))
+    }
+
     func testReportedInputIsNeverReducedByCachesAndReasoningIsMeasured() throws {
         var codexLine = codex("codex", input: 10, output: 5)
         codexLine["payload"] = ["response_id": "codex", "usage": [

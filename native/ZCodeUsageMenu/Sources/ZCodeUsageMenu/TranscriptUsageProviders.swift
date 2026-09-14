@@ -212,7 +212,7 @@ private struct TranscriptTokens: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case input_tokens, output_tokens, reasoning_output_tokens
-        case cache_read_input_tokens, cache_creation_input_tokens, cached_input_tokens
+        case cache_read_input_tokens, cache_creation_input_tokens, cache_write_input_tokens, cached_input_tokens
         case input_tokens_details, output_tokens_details, output_details
     }
     private struct InputDetails: Decodable { let cached_tokens: Int64? }
@@ -226,6 +226,7 @@ private struct TranscriptTokens: Decodable {
             ?? c.decodeIfPresent(Int64.self, forKey: .cached_input_tokens)
             ?? c.decodeIfPresent(InputDetails.self, forKey: .input_tokens_details)?.cached_tokens
         cacheWrite = try c.decodeIfPresent(Int64.self, forKey: .cache_creation_input_tokens)
+            ?? c.decodeIfPresent(Int64.self, forKey: .cache_write_input_tokens)
         reasoning = try c.decodeIfPresent(Int64.self, forKey: .reasoning_output_tokens)
             ?? c.decodeIfPresent(OutputDetails.self, forKey: .output_details)?.thinking_tokens
             ?? c.decodeIfPresent(OutputDetails.self, forKey: .output_tokens_details)?.reasoning_tokens
