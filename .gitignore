@@ -1,6 +1,4 @@
-__pycache__/
-target/
-
-# Swift Package build products and locally packaged macOS app
-native/ZCodeUsageMenu/.build/
-native/ZCodeUsageMenu/dist/
+.build/
+.swiftpm/
+dist/
+.DS_Store
