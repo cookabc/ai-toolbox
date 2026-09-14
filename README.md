@@ -11,7 +11,7 @@
   <a href="#开发与验证">开发与验证</a>
 </p>
 
-AI Usage 是一个轻量的 macOS 菜单栏应用，读取 **ZCode、Codex 和 Claude Code** 已保存在本机的用量记录。查看今日输出、累计 token 和模型排行，无需登录额外账户，也不向其他应用注入代码。
+AI Usage 是一个 macOS 菜单栏用量监视器，集中展示 **ZCode、Codex 和 Claude Code** 的今日输出、累计 token、缓存用量和模型排行。数据来自本机记录，无需额外登录。
 
 ## 一眼看到需要的信息
 
@@ -37,7 +37,7 @@ AI Usage 是一个轻量的 macOS 菜单栏应用，读取 **ZCode、Codex 和 C
   </tr>
 </table>
 
-<sub>图片由项目中的真实 SwiftUI 视图渲染，使用合成示例数据，不包含个人会话内容。模型名称为示例。</sub>
+<sub>界面截图使用示例数据。</sub>
 
 ## 快速开始
 
@@ -77,7 +77,7 @@ ZCode 可配置模型输出单价，展示已定价完成步骤的成本小计�
 
 应用不上传会话内容，不读取认证配置，也不向源数据库写入业务数据。日志逐行处理，不保留会话正文或工具参数。
 
-ZCode 无法直接只读打开时，仅在没有 WAL 或回滚日志且源文件保持稳定的条件下使用私有临时副本。Codex 和 Claude 的未变化文件集合复用内存快照；历史规模较大或文件变化时，扫描可能需要一些时间。
+首次读取或历史记录较多时，扫描可能需要一些时间，期间可切换到其他来源。
 
 工具升级可能改变数据库或日志格式。无法识别的格式会显示状态提示；支持当前解析格式不代表兼容所有历史或未来版本。
 
@@ -109,12 +109,8 @@ USAGE_LOCAL_SMOKE=1 swift test --filter MultiProviderTests/testLocalSourcesWhenE
 USAGE_RENDER_DOCS=1 swift test --filter DocumentationRenderTests
 ```
 
-## 从旧注入版迁移
-
-本仓库现仅维护原生菜单栏应用。旧的 `app.asar` 注入、安装器和 JavaScript 演示已移除。
-
-若曾安装自动注入 hook，请检查 `~/.zcode/cli/config.json`，移除调用旧 `install.py --auto` 的 `SessionStart` hook。删除仓库中的旧代码不会自动清理外部 hook，也不会恢复已修改的 ZCode 安装包。
+历史版本用户可参阅 [迁移说明](docs/migration.md)。
 
 ## License
 
-[MIT](LICENSE)。保留原项目及 macOS 版本贡献者的版权声明。
+[MIT](LICENSE)。
