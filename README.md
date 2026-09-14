@@ -4,6 +4,18 @@
 
 > ⚠️ **旧的 `app.asar` 渲染层注入方案已退役。** 它在本机 ZCode 3.11.2 上曾造成 renderer 白屏和无法进入应用。请勿运行根目录的 `install.py`、`install.py --install-hook` 或向 ZCode 安装包注入 `inject/*.js`。它们仅作为历史实现保留，不是支持的安装路径。
 
+## 多工具面板
+
+顶部可切换 **总览 / ZCode / Codex / Claude Code**，选择会保存。各来源独立后台刷新；某个来源读取失败时不影响其他来源。总览按工具列出已记录输出，菜单栏只汇总输出；来源不齐全时标注“部分”。这不是厂商账单或额度统计。
+
+- **ZCode**：只读 `~/.zcode/cli/db/db.sqlite`，保留现有 SQL 聚合。
+- **Codex**：扫描 `~/.codex/sessions` 和 `archived_sessions` 的 JSONL。只累加逐响应 `payload.usage`，以响应 ID 去重，不累加回合/线程累计字段。模型通过回合上下文关联。
+- **Claude Code**：扫描 `~/.claude/projects` 的主会话及 subagents JSONL，只解码 assistant 消息的 usage。相同消息/请求的多份记录只保留最新记录。
+- 日志读取按行限制内存，不保留会话正文或工具参数，不扫描认证配置。解析不了的记录标注为部分数据；缺失字段显示“—”，显式零值才显示 0。
+- Codex/Claude 的输入和缓存按原始记录分别显示，不套用 ZCode 的非缓存输入减法。两者的回合和工具计数暂不支持。
+- 本机首次 Codex 扫描约 17 秒，期间面板仍可切换；未变化的文件复用内存快照，文件变化或跨日后重新扫描。价格估算暂限 ZCode。
+- 自动测试使用合成数据。显式真实数据校验：`USAGE_LOCAL_SMOKE=1 swift test --filter MultiProviderTests/testLocalSourcesWhenExplicitlyEnabled`（在 Swift 工程目录运行，仅输出聚合数和耗时）。
+
 ## 功能
 
 - 菜单栏常驻显示当天输出，例如 `185k 输出`；应用启动即后台预热，点击菜单栏只读内存快照；每 30 秒后台刷新，点击展开后可手动刷新。
@@ -31,7 +43,7 @@ native/ZCodeUsageMenu/dist/ZCodeUsageMenu.app
 open native/ZCodeUsageMenu/dist/ZCodeUsageMenu.app
 ```
 
-应用是菜单栏模式，不会出现在 Dock 中。点击菜单栏的柱状图和 `out` 数字即可打开详情；底部依次有：打开数据目录、立即刷新、退出。
+应用是菜单栏模式，不会出现在 Dock 中。点击菜单栏的工具名称与输出数字打开详情；顶部切换工具，右上角 `…` 菜单提供刷新、打开当前来源目录和退出。
 
 > 首次打开 macOS 可能提示“无法验证开发者”。这是本地构建且使用 ad-hoc 签名的正常现象：在 Finder 中右键 App → **打开** → 再确认打开即可。
 

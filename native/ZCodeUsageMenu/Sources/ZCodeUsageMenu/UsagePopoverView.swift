@@ -7,13 +7,23 @@ struct UsagePopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            Picker("工具", selection: $model.selectedProvider) {
+                ForEach(UsageProviderID.allCases) { id in Text(id.title).tag(id) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 6)
             if let error = model.errorMessage, model.snapshot != nil {
                 staleBanner(error)
             }
-            if let snapshot = model.snapshot {
+            if model.selectedProvider == .overview {
+                overview.padding(10)
+            } else if let snapshot = model.snapshot {
                 // The model list is bounded to four rows in UsageRepository. A content-driven
                 // popover keeps every selected metric visible instead of hiding it in a scroll view.
                 VStack(spacing: 6) {
+                    Text(snapshot.coverage.note + (snapshot.coverage.skippedRecords > 0 ? " · 部分记录跳过" : ""))
+                        .font(.caption2).foregroundStyle(.secondary)
                     todayCard(snapshot.today)
                     lifetimeCard(snapshot.totals)
                     if !snapshot.models.isEmpty { modelsCard(snapshot.models) }
@@ -30,6 +40,40 @@ struct UsagePopoverView: View {
         .background(.regularMaterial)
     }
 
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("本机已记录输出 · 非账单或订阅额度")
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(model.sourceIDs) { id in
+                SurfaceCard {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(id.title).font(.headline)
+                            Spacer()
+                            if model.states[id]?.isRefreshing == true {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                        if let snapshot = model.states[id]?.snapshot {
+                            HStack {
+                                Text("今日 " + (snapshot.coverage.metrics.contains(.output) ? Format.token(snapshot.today.outputTokens) : "—"))
+                                Spacer()
+                                Text("累计 " + (snapshot.coverage.metrics.contains(.output) ? Format.token(snapshot.totals.outputTokens) : "—"))
+                            }.monospacedDigit()
+                        }
+                        if let error = model.states[id]?.errorMessage {
+                            Text(error).font(.caption2).foregroundStyle(.orange)
+                        } else if model.states[id]?.snapshot == nil {
+                            Text("正在探测本地记录…").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Text("不同工具的输入、缓存和回合口径不同，分开显示；切换标签查看详情。")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - Header
 
     private var header: some View {
@@ -38,7 +82,7 @@ struct UsagePopoverView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 24, height: 24)
-            Text("ZCode 用量")
+            Text("AI 用量")
                 .font(.system(.headline, design: .rounded))
             Text(headerStatus)
                 .font(.caption)
@@ -74,7 +118,7 @@ struct UsagePopoverView: View {
                         Text("今日输出")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.accentColor)
-                        Text(Format.token(totals.outputTokens))
+                        Text(model.display(totals.outputTokens, metric: .output))
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(.primary)
@@ -85,14 +129,23 @@ struct UsagePopoverView: View {
                         alignment: .leading,
                         spacing: 5
                     ) {
-                        compactMetric("输入", Format.token(totals.inputTokens))
-                        compactMetric("回合", "\(totals.turns)")
-                        compactMetric("请求", Format.token(totals.requests))
-                        compactMetric("工具", Format.count(totals.toolCalls))
+                        compactMetric("输入", model.display(totals.inputTokens, metric: .input))
+                        compactMetric("回合", model.display(totals.turns, metric: .turns))
+                        compactMetric("请求", model.display(totals.requests, metric: .requests))
+                        compactMetric("工具", model.display(totals.toolCalls, metric: .tools))
                     }
                 }
                 Divider().opacity(0.55)
-                inputComposition(totals)
+                if model.snapshot?.coverage.supportsInputComposition == true {
+                    inputComposition(totals)
+                } else {
+                    HStack {
+                        compactMetric("缓存读", model.display(totals.cacheReadInputTokens, metric: .cacheRead))
+                        compactMetric("缓存" + (model.snapshot?.coverage.cacheWriteLabel ?? "写入"), model.display(totals.cacheCreationInputTokens, metric: .cacheWrite))
+                    }
+                    Text("输入及缓存均按来源记录；不推算非缓存输入")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -116,7 +169,7 @@ struct UsagePopoverView: View {
             }
             CompositionBar(totals: totals)
                 .frame(height: 6)
-                .accessibilityLabel("输入构成：缓存读 \(Format.token(totals.cacheReadInputTokens))，缓存创建 \(Format.token(totals.cacheCreationInputTokens))，非缓存输入 \(Format.token(totals.freshInputTokens))")
+                .accessibilityLabel("输入构成：缓存读 \(model.display(totals.cacheReadInputTokens, metric: .cacheRead))，缓存创建 \(Format.token(totals.cacheCreationInputTokens))，非缓存输入 \(Format.token(totals.freshInputTokens))")
             HStack(spacing: 8) {
                 compositionLegend("缓存读", totals.cacheReadInputTokens, color: .cyan)
                 compositionLegend("创建", totals.cacheCreationInputTokens, color: .indigo)
@@ -142,17 +195,17 @@ struct UsagePopoverView: View {
             VStack(alignment: .leading, spacing: 7) {
                 sectionHeading("累计用量", icon: "clock.arrow.circlepath")
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
-                    statTile("输入", Format.token(totals.inputTokens), accent: .cyan)
-                    statTile("输出", Format.token(totals.outputTokens), accent: .indigo)
-                    statTile("推理", Format.token(totals.reasoningTokens), accent: .purple)
-                    statTile("缓存读", Format.token(totals.cacheReadInputTokens), accent: .teal)
+                    statTile("输入", model.display(totals.inputTokens, metric: .input), accent: .cyan)
+                    statTile("输出", model.display(totals.outputTokens, metric: .output), accent: .indigo)
+                    statTile("推理", model.display(totals.reasoningTokens, metric: .reasoning), accent: .purple)
+                    statTile("缓存读", model.display(totals.cacheReadInputTokens, metric: .cacheRead), accent: .teal)
                 }
                 HStack(spacing: 5) {
-                    activityMetric("回合", Format.count(totals.turns))
+                    activityMetric("回合", model.display(totals.turns, metric: .turns))
                     Text("·").foregroundStyle(.tertiary)
-                    activityMetric("请求", Format.count(totals.requests))
+                    activityMetric("请求", model.display(totals.requests, metric: .requests))
                     Text("·").foregroundStyle(.tertiary)
-                    activityMetric("工具", Format.count(totals.toolCalls))
+                    activityMetric("工具", model.display(totals.toolCalls, metric: .tools))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -195,10 +248,10 @@ struct UsagePopoverView: View {
             VStack(alignment: .leading, spacing: 6) {
                 sectionHeading("模型（按输出排序）", icon: "cpu")
                 let maximum = max(1, models.map(\.outputTokens).max() ?? 1)
-                ForEach(models) { item in
+                ForEach(Array(models.prefix(4))) { item in
                     ModelRow(item: item, maximumOutput: maximum)
                 }
-                Text("仅含完成步骤记录")
+                Text(model.selectedProvider == .zcode ? "仅含完成步骤记录" : "仅含可识别的本地用量；非账单")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -234,7 +287,7 @@ struct UsagePopoverView: View {
             }
             Text("还没有可读的用量数据")
                 .font(.headline)
-            Text(model.errorMessage ?? "等待 ZCode 首次写入本机用量数据库。")
+            Text(model.errorMessage ?? "等待所选工具写入可识别的本地用量记录。")
                 .multilineTextAlignment(.center)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -264,7 +317,7 @@ struct UsagePopoverView: View {
     }
 
     private func openDataDirectory() {
-        NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appending(path: ".zcode/cli"))
+        NSWorkspace.shared.open(model.selectedProvider.directory)
     }
 }
 

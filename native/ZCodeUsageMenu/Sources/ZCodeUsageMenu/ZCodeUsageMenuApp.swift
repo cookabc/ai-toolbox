@@ -6,7 +6,12 @@ struct ZCodeUsageMenuApp: App {
     @StateObject private var model: UsageViewModel
 
     init() {
-        let usageModel = UsageViewModel()
+        let codexRoot = UsageProviderID.codex.directory
+        let usageModel = UsageViewModel(providers: [
+            ZCodeUsageProvider(),
+            CachedTranscriptProvider(provider: CodexUsageProvider(), roots: [codexRoot.appending(path: "sessions"), codexRoot.appending(path: "archived_sessions")]),
+            CachedTranscriptProvider(provider: ClaudeUsageProvider(), roots: [UsageProviderID.claude.directory])
+        ])
         usageModel.start() // Prewarm before the first menu-bar click.
         _model = StateObject(wrappedValue: usageModel)
     }
