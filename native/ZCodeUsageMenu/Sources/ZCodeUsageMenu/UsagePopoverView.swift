@@ -102,8 +102,10 @@ struct UsagePopoverView: View {
 
     private var headerStatus: String {
         if model.isRefreshing { return "· 正在刷新…" }
-        if let date = model.snapshot?.refreshedAt {
-            return "· \(date.formatted(date: .omitted, time: .shortened)) 更新"
+        // Overview has no single snapshot; fall back to the newest source refresh time.
+        let refreshedAt = model.snapshot?.refreshedAt ?? model.sourceIDs.compactMap { model.states[$0]?.snapshot?.refreshedAt }.max()
+        if let refreshedAt {
+            return "· \(refreshedAt.formatted(date: .omitted, time: .shortened)) 更新"
         }
         return "· 等待读取"
     }
