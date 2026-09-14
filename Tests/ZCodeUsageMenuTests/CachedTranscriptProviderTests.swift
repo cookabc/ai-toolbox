@@ -9,17 +9,25 @@ final class CachedTranscriptProviderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let file = root.appending(path: "session.jsonl")
         try Data("{}\n".utf8).write(to: file)
-        let cache = CachedTranscriptProvider(provider: TimestampProvider(), roots: [root])
+        let provider = TimestampProvider()
+        let cache = CachedTranscriptProvider(provider: provider, roots: [root])
         let first = try cache.load()
-        XCTAssertEqual(try cache.load().refreshedAt, first.refreshedAt)
+        let cached = try cache.load()
+        XCTAssertGreaterThanOrEqual(cached.refreshedAt, first.refreshedAt)
+        XCTAssertEqual(provider.callCount, 1)
         try Data("{}\n{}\n".utf8).write(to: file)
         XCTAssertNotEqual(try cache.load().refreshedAt, first.refreshedAt)
+        XCTAssertEqual(provider.callCount, 2)
     }
 }
 
-private struct TimestampProvider: UsageProvider {
+private final class TimestampProvider: UsageProvider, @unchecked Sendable {
     let id = UsageProviderID.codex
+    private let lock = NSLock()
+    private var calls = 0
+    var callCount: Int { lock.withLock { calls } }
     func load() throws -> UsageSnapshot {
-        UsageSnapshot(refreshedAt: Date(), totals: .zero, today: .zero, models: [])
+        lock.withLock { calls += 1 }
+        return UsageSnapshot(refreshedAt: Date(), totals: .zero, today: .zero, models: [])
     }
 }

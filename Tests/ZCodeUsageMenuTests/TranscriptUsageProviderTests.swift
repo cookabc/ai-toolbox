@@ -110,6 +110,25 @@ final class TranscriptUsageProviderTests: XCTestCase {
         XCTAssertEqual(zero.totals.cacheReadInputTokens, 0)
     }
 
+    func testOldMissingFieldsDoNotHideCompleteTodayMetrics() throws {
+        var old = codex("old", input: 2, output: 3,
+                        time: iso(instant.addingTimeInterval(-172_800)))
+        old["payload"] = ["response_id": "old", "usage": ["input_tokens": 2]]
+        try write("sessions/a.jsonl", lines: [old, codex("today", input: 4, output: 5)])
+        let snapshot = try codexProvider().load()
+        XCTAssertFalse(snapshot.coverage.metrics.contains(.output))
+        XCTAssertTrue(snapshot.coverage.todayMetrics?.contains(.output) == true)
+        XCTAssertEqual(snapshot.today.outputTokens, 5)
+    }
+
+    func testUndatedRecordsMarkCoveragePartial() throws {
+        try write("sessions/a.jsonl", lines: [codex("undated", input: 1, output: 2, time: "invalid")])
+        let snapshot = try codexProvider().load()
+        XCTAssertTrue(snapshot.coverage.isPartial)
+        XCTAssertEqual(snapshot.today.outputTokens, 0)
+        XCTAssertEqual(snapshot.totals.outputTokens, 2)
+    }
+
     func testCodexRealFieldNamesIncludeCacheWriteInputTokens() throws {
         // Codex writes cache_write_input_tokens (not cache_creation_input_tokens);
         // missing this key made the cache-write column render as unavailable.
@@ -178,6 +197,18 @@ final class TranscriptUsageProviderTests: XCTestCase {
             values.append(try JSONDecoder().decode(Number.self, from: $0).n)
         }
         XCTAssertEqual(values, [1, 2])
+        XCTAssertEqual(skipped, 2)
+    }
+
+    func testOversizedConversationDoesNotWarnButOversizedUsageStillDoes() throws {
+        let file = root.appending(path: "large.jsonl")
+        let body = String(repeating: "x", count: 256)
+        let text = "{\"type\":\"user\",\"content\":\"\(body)\"}\n"
+            + "{\"type\":\"assistant\",\"content\":\"\(body)\"}\n"
+            + "{\"message\":{\"type\":\"user\",\"content\":\"\(body)\"},\"type\":\"assistant\"}\n"
+        try Data(text.utf8).write(to: file)
+        let skipped = TranscriptJSONL.read(file, maxLineBytes: 64, chunkBytes: 16,
+                                          ignoredOversizedTypes: ["user"]) { _ in }
         XCTAssertEqual(skipped, 2)
     }
 

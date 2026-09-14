@@ -20,7 +20,12 @@ final class CachedTranscriptProvider: UsageProvider, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         let current = fileSignature()
-        if current == signature, let snapshot { return snapshot }
+        if current == signature, var snapshot {
+            snapshot = UsageSnapshot(refreshedAt: Date(), totals: snapshot.totals, today: snapshot.today,
+                                     models: snapshot.models, coverage: snapshot.coverage)
+            self.snapshot = snapshot
+            return snapshot
+        }
         let loaded = try provider.load()
         // If a writer appended during the scan, the pre-scan signature causes a
         // fresh read on the next tick, instead of treating incomplete data as cached.

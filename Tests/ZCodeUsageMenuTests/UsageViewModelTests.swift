@@ -38,6 +38,54 @@ final class UsageViewModelTests: XCTestCase {
         try await waitUntil { !model.isRefreshing }
         XCTAssertEqual(model.snapshot, first)
         XCTAssertTrue(model.errorMessage?.contains("temporary database lock") == true)
+        XCTAssertTrue(model.statusText.contains("部分"))
+        model.selectedProvider = .overview
+        XCTAssertTrue(model.statusText.contains("部分"))
+    }
+
+    func testPreviousDaySnapshotIsExcludedFromTodayAndOverview() async throws {
+        let original = makeSnapshot(todayOutput: 1_000)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+        let old = UsageSnapshot(refreshedAt: yesterday, totals: original.totals,
+                                today: original.today, models: [])
+        let model = UsageViewModel(loader: { old })
+        model.refresh()
+        try await waitUntil { !model.isRefreshing }
+        XCTAssertEqual(model.todayDisplay(1_000, metric: .output), "—")
+        XCTAssertEqual(model.statusText, "ZCode —")
+        XCTAssertNotNil(model.sourceWarning(.zcode))
+        XCTAssertEqual(model.snapshot?.totals, original.totals)
+        model.selectedProvider = .overview
+        XCTAssertEqual(model.statusText, "总览 —")
+    }
+
+    func testPartialRecordsMarkOverviewAndTodayCoverageIsIndependent() async throws {
+        var snapshot = makeSnapshot(todayOutput: 1_000)
+        snapshot.coverage.metrics.remove(.output)
+        snapshot.coverage.todayMetrics = [.output]
+        snapshot.coverage.skippedRecords = 1
+        let fixture = snapshot
+        let model = UsageViewModel(loader: { fixture })
+        model.refresh()
+        try await waitUntil { !model.isRefreshing }
+        XCTAssertEqual(model.display(1_000, metric: .output), "—")
+        XCTAssertEqual(model.todayDisplay(1_000, metric: .output), "1k")
+        model.selectedProvider = .overview
+        XCTAssertEqual(model.statusText, "总览 1k 输出（部分）")
+    }
+
+    func testCostUsesAllPricedModelsAndIgnoresInvalidPrices() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"m0":{"output":1},"m4":{"output":2},"m5":{"output":-10}}"#.utf8).write(to: url)
+        let models = (0..<6).map {
+            ModelUsage(modelID: "m\($0)", providerID: "p", requests: 1, outputTokens: 1_000_000)
+        }
+        let snapshot = UsageSnapshot(refreshedAt: .now, totals: .zero, today: .zero, models: models)
+        let model = UsageViewModel(loader: { snapshot }, pricesURL: url)
+        model.refresh()
+        try await waitUntil { !model.isRefreshing }
+        XCTAssertEqual(model.optionalOutputCost, 3)
     }
 
     func testSecondRefreshDoesNotStartOverlappingRead() async throws {

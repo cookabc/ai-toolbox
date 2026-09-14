@@ -6,6 +6,7 @@ struct UsageRepository: Sendable {
         .appending(path: ".zcode/cli/db/db.sqlite")
 
     private let databaseURL: URL
+    private let readCopy = DatabaseReadCopy()
 
     init(databaseURL: URL = UsageRepository.defaultDatabaseURL) {
         self.databaseURL = databaseURL
@@ -16,14 +17,32 @@ struct UsageRepository: Sendable {
             throw UsageError.databaseMissing(databaseURL)
         }
 
+        do {
+            return try loadDatabase(at: databaseURL)
+        } catch UsageError.sqliteRead(let code, _) where code == SQLITE_CANTOPEN {
+            return try readCopy.read(source: databaseURL) { copy in
+                try loadDatabase(at: copy, readOnly: false)
+            }
+        }
+    }
+
+    private func loadDatabase(at url: URL, readOnly: Bool = true) throws -> UsageSnapshot {
+
         var db: OpaquePointer?
-        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
-        guard sqlite3_open_v2("file:\(databaseURL.path)?mode=ro", &db, flags, nil) == SQLITE_OK, let db else {
+        let flags = (readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE) | SQLITE_OPEN_NOMUTEX
+        guard sqlite3_open_v2(url.path, &db, flags, nil) == SQLITE_OK, let db else {
             let detail = db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown SQLite error"
+            let code = db.map { sqlite3_errcode($0) } ?? SQLITE_CANTOPEN
             sqlite3_close(db)
-            throw UsageError.databaseOpen(detail)
+            throw UsageError.sqliteRead(code, detail)
         }
         defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 1_000)
+        // Keep all three aggregates on the same database snapshot while ZCode writes.
+        guard sqlite3_exec(db, "BEGIN", nil, nil, nil) == SQLITE_OK else {
+            throw UsageError.sqliteRead(sqlite3_errcode(db), String(cString: sqlite3_errmsg(db)))
+        }
+        defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
 
         return UsageSnapshot(
             refreshedAt: .now,
@@ -48,13 +67,13 @@ struct UsageRepository: Sendable {
         """
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-            throw UsageError.query(String(cString: sqlite3_errmsg(db)))
+            throw UsageError.sqliteRead(sqlite3_errcode(db), String(cString: sqlite3_errmsg(db)))
         }
         defer { sqlite3_finalize(statement) }
         if let bind { sqlite3_bind_int64(statement, 1, bind) }
 
         guard sqlite3_step(statement) == SQLITE_ROW else {
-            throw UsageError.query(String(cString: sqlite3_errmsg(db)))
+            throw UsageError.sqliteRead(sqlite3_errcode(db), String(cString: sqlite3_errmsg(db)))
         }
         return UsageTotals(
             turns: sqlite3_column_int64(statement, 0),
@@ -80,16 +99,16 @@ struct UsageRepository: Sendable {
                        AND json_extract(p.data, '$.type') = 'step-finish'
         GROUP BY m.model_id, m.provider_id
         ORDER BY output_tokens DESC, requests DESC
-        LIMIT 4
         """
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-            throw UsageError.query(String(cString: sqlite3_errmsg(db)))
+            throw UsageError.sqliteRead(sqlite3_errcode(db), String(cString: sqlite3_errmsg(db)))
         }
         defer { sqlite3_finalize(statement) }
 
         var models: [ModelUsage] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var result = sqlite3_step(statement)
+        while result == SQLITE_ROW {
             let model = sqlite3_column_text(statement, 0).map { String(cString: $0) } ?? "unknown"
             let provider = sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? "unknown"
             models.append(ModelUsage(
@@ -98,7 +117,9 @@ struct UsageRepository: Sendable {
                 requests: sqlite3_column_int64(statement, 2),
                 outputTokens: sqlite3_column_int64(statement, 3)
             ))
+            result = sqlite3_step(statement)
         }
+        guard result == SQLITE_DONE else { throw UsageError.sqliteRead(sqlite3_errcode(db), String(cString: sqlite3_errmsg(db))) }
         return models
     }
 

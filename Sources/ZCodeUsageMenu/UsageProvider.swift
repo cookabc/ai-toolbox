@@ -35,6 +35,10 @@ struct UsageCoverage: Equatable, Sendable {
     var skippedRecords: Int = 0
     var cacheWriteLabel: String = "创建"
     var supportsInputComposition: Bool = true
+    var todayMetrics: Set<UsageMetric>?
+    var hasUndatedRecords: Bool = false
+
+    var isPartial: Bool { skippedRecords > 0 || hasUndatedRecords }
 
     static func transcripts(note: String, fileCount: Int, skippedRecords: Int = 0,
                             metrics: Set<UsageMetric>, cacheWriteLabel: String) -> UsageCoverage {

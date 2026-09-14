@@ -70,6 +70,18 @@ final class UsageRepositoryTests: XCTestCase {
         XCTAssertEqual(snapshot.models.first?.outputTokens, 300)
     }
 
+    func testModelAggregationIncludesModelsBeyondVisibleTopFour() throws {
+        for index in 0..<5 {
+            try execute("""
+            INSERT INTO model_usage (id, assistant_message_id, provider_id, model_id)
+            VALUES ('extra\(index)', 'extra-msg\(index)', 'prov', 'extra-model\(index)');
+            INSERT INTO part (id, message_id, data)
+            VALUES ('extra-part\(index)', 'extra-msg\(index)', '{"type":"step-finish","tokens":{"output":10}}');
+            """)
+        }
+        XCTAssertEqual(try UsageRepository(databaseURL: databaseURL).load().models.count, 6)
+    }
+
     func testMissingDatabaseHasClearError() {
         let missing = FileManager.default.temporaryDirectory.appending(path: "missing-\(UUID().uuidString).sqlite")
         XCTAssertThrowsError(try UsageRepository(databaseURL: missing).load()) { error in

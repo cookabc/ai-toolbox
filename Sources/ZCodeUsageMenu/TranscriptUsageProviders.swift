@@ -27,7 +27,7 @@ struct CodexUsageProvider: UsageProvider {
                 let context = try decoder.decode(CodexContext.self, from: line).payload
                 if let turn = context.turn_id, let model = nonempty(context.model) { models[turn] = model }
             }
-            collector.skipped += TranscriptJSONL.read(file) { line in
+            collector.skipped += TranscriptJSONL.read(file, ignoredOversizedTypes: ["compacted", "event_msg", "response_item", "turn_context", "session_meta"]) { line in
                 guard try decoder.decode(TranscriptHeader.self, from: line).type == "token_usage_record" else { return }
                 let record = try decoder.decode(CodexRecord.self, from: line)
                 guard let response = nonempty(record.payload.response_id),
@@ -73,7 +73,7 @@ struct ClaudeUsageProvider: UsageProvider {
         let decoder = JSONDecoder()
         let dates = TranscriptDates()
         for file in files {
-            collector.skipped += TranscriptJSONL.read(file) { line in
+            collector.skipped += TranscriptJSONL.read(file, ignoredOversizedTypes: ["user", "progress", "system", "file-history-snapshot", "queue-operation"]) { line in
                 guard try decoder.decode(TranscriptHeader.self, from: line).type == "assistant" else { return }
                 let record = try decoder.decode(ClaudeRecord.self, from: line)
                 guard let message = nonempty(record.message.id),
@@ -94,6 +94,7 @@ struct ClaudeUsageProvider: UsageProvider {
 /// The callback must retain only IDs/metadata/usage, not the supplied line.
 enum TranscriptJSONL {
     static func read(_ url: URL, maxLineBytes: Int = 1_048_576, chunkBytes: Int = 65_536,
+                     ignoredOversizedTypes: Set<String> = [],
                      consume: (Data) throws -> Void) -> Int {
         guard maxLineBytes > 0, chunkBytes > 0,
               TranscriptFiles.isJSONL(url),
@@ -110,14 +111,16 @@ enum TranscriptJSONL {
                     let end = newline ?? chunk.endIndex
                     if !oversized {
                         if end - start > maxLineBytes - line.count {
-                            line.removeAll(keepingCapacity: true)
+                            line.append(contentsOf: chunk[start..<min(end, start + maxLineBytes - line.count)])
                             oversized = true
                         } else {
                             line.append(contentsOf: chunk[start..<end])
                         }
                     }
                     if let newline {
-                        if oversized { skipped += 1 }
+                        if oversized {
+                            if !ignoredOversizedTypes.contains(topLevelType(line) ?? "") { skipped += 1 }
+                        }
                         else if !line.allSatisfy({ $0 == 13 || $0 == 32 || $0 == 9 }) {
                             do { try consume(line) } catch { skipped += 1 }
                         }
@@ -130,6 +133,42 @@ enum TranscriptJSONL {
             if oversized || !line.isEmpty { skipped += 1 }
         } catch { skipped += 1 }
         return skipped
+    }
+
+    // Inspect only completed top-level string fields in a bounded prefix. A type
+    // nested inside message content must never suppress a usage warning.
+    private static func topLevelType(_ data: Data) -> String? {
+        let bytes = Array(data)
+        var depth = 0
+        var start: Int?
+        var escaped = false
+        var expectsKey = false
+        var key: String?
+        for (index, byte) in bytes.enumerated() {
+            if let stringStart = start {
+                if escaped { escaped = false; continue }
+                if byte == 92 { escaped = true; continue }
+                if byte == 34 {
+                    if depth == 1 {
+                        let value = try? JSONDecoder().decode(String.self, from: Data(bytes[stringStart...index]))
+                        if expectsKey { key = value; expectsKey = false }
+                        else if key == "type" { return value }
+                    }
+                    start = nil
+                }
+                continue
+            }
+            switch byte {
+            case 34: start = index
+            case 123, 91:
+                depth += 1
+                if depth == 1 { expectsKey = true }
+            case 125, 93: depth -= 1
+            case 44 where depth == 1: expectsKey = true; key = nil
+            default: break
+            }
+        }
+        return nil
     }
 }
 
@@ -322,6 +361,7 @@ private struct TranscriptCollector {
         var today = TranscriptCounters()
         var byModel: [String: TranscriptCounters] = [:]
         var metrics: Set<UsageMetric>?
+        var todayMetrics: Set<UsageMetric>?
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: refreshedAt)
         let end = calendar.date(byAdding: .day, value: 1, to: start)!
@@ -331,7 +371,10 @@ private struct TranscriptCollector {
             byModel[sample.model, default: TranscriptCounters()].add(sample.usage)
             metrics = metrics.map { $0.intersection(sample.usage.metrics) } ?? sample.usage.metrics
             if let date = sample.date {
-                if date >= start && date < end { today.add(sample.usage) }
+                if date >= start && date < end {
+                    today.add(sample.usage)
+                    todayMetrics = todayMetrics.map { $0.intersection(sample.usage.metrics) } ?? sample.usage.metrics
+                }
             } else { undated = true }
         }
         var measured = metrics ?? []
@@ -346,9 +389,12 @@ private struct TranscriptCollector {
         }
         var note = "本地会话已记录用量；非账单或额度；仅展示记录完整的指标"
         if undated { note += "；无有效时间的记录不计入今日" }
-        return UsageSnapshot(refreshedAt: refreshedAt, totals: total.totals, today: today.totals, models: sortedModels,
-                             coverage: .transcripts(note: note, fileCount: fileCount,
-                                                    skippedRecords: skipped, metrics: measured,
-                                                    cacheWriteLabel: cacheWriteLabel))
+        var coverage = UsageCoverage.transcripts(note: note, fileCount: fileCount,
+                                                skippedRecords: skipped, metrics: measured,
+                                                cacheWriteLabel: cacheWriteLabel)
+        coverage.todayMetrics = (todayMetrics ?? measured).union([.requests])
+        coverage.hasUndatedRecords = undated
+        return UsageSnapshot(refreshedAt: refreshedAt, totals: total.totals, today: today.totals,
+                             models: sortedModels, coverage: coverage)
     }
 }
