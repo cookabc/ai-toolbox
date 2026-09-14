@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import ZCodeUsageMenu
+@testable import AIUsage
 
 final class DatabaseReadCopyTests: XCTestCase {
     func testCopyIsPrivateAndReusedUntilSourceChanges() throws {

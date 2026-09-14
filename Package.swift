@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "ZCodeUsageMenu",
+    name: "AIUsage",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "ZCodeUsageMenu", targets: ["ZCodeUsageMenu"]),
+        .executable(name: "AIUsage", targets: ["AIUsage"]),
     ],
     targets: [
         .executableTarget(
-            name: "ZCodeUsageMenu",
+            name: "AIUsage",
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .testTarget(
-            name: "ZCodeUsageMenuTests",
-            dependencies: ["ZCodeUsageMenu"],
+            name: "AIUsageTests",
+            dependencies: ["AIUsage"],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
     ]

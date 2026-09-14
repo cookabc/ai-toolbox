@@ -44,11 +44,11 @@ AI Usage 是一个 macOS 菜单栏用量监视器，集中展示 **ZCode、Codex
 需要 **macOS 13+** 和 **Xcode / Swift 6**。使用系统 SwiftUI、AppKit 与 SQLite，无第三方 Swift 包依赖。
 
 ```bash
-git clone https://github.com/cookabc/status-bar.git
-cd status-bar
+git clone https://github.com/cookabc/ai-usage.git
+cd ai-usage
 swift test
 bash scripts/package-app.sh
-open dist/ZCodeUsageMenu.app
+open dist/AIUsage.app
 ```
 
 应用启动后显示在 **macOS 菜单栏**，不会出现在 Dock 中。首次启动默认显示总览；点击工具卡片或顶部标签查看详情。

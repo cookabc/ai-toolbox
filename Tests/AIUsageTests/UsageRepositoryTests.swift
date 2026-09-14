@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 import XCTest
-@testable import ZCodeUsageMenu
+@testable import AIUsage
 
 final class UsageRepositoryTests: XCTestCase {
     private var databaseURL: URL!

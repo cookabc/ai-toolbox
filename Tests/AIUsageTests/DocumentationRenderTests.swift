@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
-@testable import ZCodeUsageMenu
+@testable import AIUsage
 
 /// Opt-in documentation renders use the real views and synthetic records only.
 @MainActor

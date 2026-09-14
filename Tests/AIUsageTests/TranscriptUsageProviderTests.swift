@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import ZCodeUsageMenu
+@testable import AIUsage
 
 final class TranscriptUsageProviderTests: XCTestCase {
     private var root: URL!

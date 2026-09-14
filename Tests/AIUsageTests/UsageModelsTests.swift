@@ -1,5 +1,5 @@
 import XCTest
-@testable import ZCodeUsageMenu
+@testable import AIUsage
 
 final class UsageModelsTests: XCTestCase {
     func testInputCompositionSplitsCacheAndFreshInput() {

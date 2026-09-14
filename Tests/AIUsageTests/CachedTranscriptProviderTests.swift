@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import ZCodeUsageMenu
+@testable import AIUsage
 
 final class CachedTranscriptProviderTests: XCTestCase {
     func testUnchangedFilesReuseSnapshotAndChangedFilesInvalidate() throws {

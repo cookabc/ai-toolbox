@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>AI 用量</string>
+  <string>AI Usage</string>
   <key>CFBundleExecutable</key>
-  <string>ZCodeUsageMenu</string>
+  <string>AIUsage</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
-  <string>local.zcode.usage-menu</string>
+  <string>io.github.cookabc.ai-usage</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>ZCodeUsageMenu</string>
+  <string>AIUsage</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
