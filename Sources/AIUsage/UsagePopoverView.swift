@@ -3,122 +3,56 @@ import SwiftUI
 
 struct UsagePopoverView: View {
     @ObservedObject var model: UsageViewModel
+    @StateObject private var configModel = LiveConfigViewModel()
+    @State private var selectedTool: LiveConfigApp = .codex
+    @State private var showsConfig = false
+    @State private var pendingClearClaude = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Picker("工具", selection: $model.selectedProvider) {
-                ForEach(UsageProviderID.allCases) { id in Text(id.title).tag(id) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 14)
-            .padding(.bottom, 10)
-            if let warning = model.sourceWarning(model.selectedProvider) {
-                staleBanner(warning)
-            }
-            if model.selectedProvider == .overview {
-                overview.padding(.horizontal, 14).padding(.bottom, 14)
-            } else if let snapshot = model.snapshot {
-                VStack(spacing: 10) {
-                    Text(snapshot.coverage.note)
-                        .font(.caption2).foregroundStyle(.secondary)
-                    todayCard(snapshot.today)
-                    lifetimeCard(snapshot.totals)
-                    if !snapshot.models.isEmpty { modelsCard(snapshot.models) }
+            toolModeBar
+            ZStack(alignment: .top) {
+                if showsConfig {
+                    LiveConfigView(model: configModel)
+                } else {
+                    usageBody
                 }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 14)
-            } else {
-                emptyState
-                    .frame(maxWidth: .infinity, minHeight: 260)
-                    .padding(24)
             }
         }
         .frame(width: 400)
         .fixedSize(horizontal: false, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private var overview: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("本机已记录输出")
-                    .font(.caption.weight(.medium))
-                Spacer()
-                Text("非账单或订阅额度")
-                    .font(.caption2)
-            }
-            .foregroundStyle(.secondary)
-            .padding(.vertical, 2)
-            ForEach(model.sourceIDs) { id in
-                Button { model.selectedProvider = id } label: {
-                    SurfaceCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 8) {
-                                Image(systemName: id == .zcode ? "square.stack.3d.up" : (id == .codex ? "terminal" : "command"))
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(sourceColor(id))
-                                    .frame(width: 28, height: 28)
-                                    .background(sourceColor(id).opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-                                Text(id.title).font(.subheadline.weight(.semibold))
-                                Spacer()
-                                if model.states[id]?.isRefreshing == true {
-                                    ProgressView().controlSize(.small)
-                                } else if let snapshot = model.states[id]?.snapshot {
-                                    Text(snapshot.refreshedAt, style: .time)
-                                        .font(.caption2.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            if let snapshot = model.states[id]?.snapshot {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(model.todayDisplay(snapshot.today.outputTokens, metric: .output, provider: id))
-                                        .font(.system(size: 25, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(.primary)
-                                    Text("今日输出").font(.caption2).foregroundStyle(.secondary)
-                                    Spacer()
-                                    VStack(alignment: .trailing, spacing: 2) {
-                                        Text(snapshot.coverage.metrics.contains(.output) ? Format.token(snapshot.totals.outputTokens) : "—")
-                                            .font(.system(.subheadline, design: .rounded).weight(.medium))
-                                        Text("累计输出").font(.caption2).foregroundStyle(.secondary)
-                                    }
-                                }
-                                .monospacedDigit()
-                                if let warning = model.sourceWarning(id) {
-                                    Label(warning, systemImage: "exclamationmark.circle")
-                                        .font(.caption2).foregroundStyle(.orange)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            } else if let error = model.states[id]?.errorMessage {
-                                Text(error).font(.caption2).foregroundStyle(.orange)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            } else {
-                                Text("正在读取本地记录…").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                }
-                .buttonStyle(.plain)
-                .help("查看 \(id.title) 用量")
-            }
-            Label("各工具分别统计，点击卡片查看详情", systemImage: "info.circle")
-                .font(.caption2).foregroundStyle(.secondary)
-                .padding(.top, 2)
+        .animation(nil, value: selectedTool)
+        .animation(nil, value: showsConfig)
+        .onAppear(perform: syncOnAppear)
+        .confirmationDialog("清除 Claude Code 的 API 覆盖项？", isPresented: $pendingClearClaude, titleVisibility: .visible) {
+            Button("清除覆盖项", role: .destructive) { configModel.clearClaudeOverlay() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将从 ~/.claude/settings.json 移除 Base URL、模型和 API Key 等覆盖项，其余 env 项保留。供应商库不受影响。")
         }
     }
 
-    private func sourceColor(_ id: UsageProviderID) -> Color {
-        switch id {
-        case .zcode: .blue
-        case .codex: .indigo
-        case .claude: .orange
-        case .overview: .blue
+    @ViewBuilder
+    private var usageBody: some View {
+        if let warning = model.sourceWarning(model.selectedProvider) {
+            staleBanner(warning)
+        }
+        if let snapshot = model.snapshot {
+            VStack(spacing: 10) {
+                Text(snapshot.coverage.note)
+                    .font(.caption2).foregroundStyle(.secondary)
+                todayCard(snapshot.today)
+                lifetimeCard(snapshot.totals)
+                if !snapshot.models.isEmpty { modelsCard(snapshot.models) }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 14)
+        } else {
+            emptyState
+                .frame(maxWidth: .infinity, minHeight: 260)
+                .padding(24)
         }
     }
 
@@ -131,38 +65,143 @@ struct UsagePopoverView: View {
                 .scaledToFit()
                 .frame(width: 28, height: 28)
                 .accessibilityHidden(true)
-            Text("AI 用量")
+            Text(AppBranding.title)
                 .font(.system(.headline, design: .rounded))
-            Text(headerStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-            Button(action: model.refresh) {
-                Image(systemName: "arrow.clockwise")
+            if !headerSubtitle.isEmpty {
+                Text(headerSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderless)
-            .disabled(model.isRefreshing)
-            .help("刷新用量（⌘R）")
-            .accessibilityLabel("刷新用量")
-            .keyboardShortcut("r", modifiers: .command)
-            OverflowMenuButton(
-                isRefreshing: model.isRefreshing,
-                refresh: model.refresh,
-                openDataDirectory: openDataDirectory,
-                quit: { NSApplication.shared.terminate(nil) }
-            )
-            .frame(width: 28, height: 28)
+            Spacer(minLength: 0)
+            headerToolbar
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
     }
 
-    private var headerStatus: String {
+    private var headerIsBusy: Bool {
+        showsConfig ? configModel.isBusy : model.isRefreshing
+    }
+
+    @ViewBuilder
+    private var headerToolbar: some View {
+        HStack(spacing: 0) {
+            if showsConfig && selectedTool == .claude {
+                HeaderIconButton(
+                    systemName: "eraser",
+                    help: "清除 Claude API 覆盖项",
+                    disabled: configModel.isBusy
+                ) {
+                    pendingClearClaude = true
+                }
+            }
+
+            HeaderIconButton(
+                systemName: "arrow.clockwise",
+                help: showsConfig ? "重新读取配置（⌘R）" : "刷新用量（⌘R）",
+                disabled: headerIsBusy,
+                spinning: headerIsBusy
+            ) {
+                if showsConfig {
+                    configModel.reload()
+                } else {
+                    model.refresh()
+                }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+
+            HeaderIconButton(
+                systemName: "folder",
+                help: "打开数据目录"
+            ) {
+                openDataDirectory()
+            }
+
+            HeaderIconButton(
+                systemName: "power",
+                help: "退出 \(AppBranding.title)（⌘Q）"
+            ) {
+                NSApplication.shared.terminate(nil)
+            }
+            .keyboardShortcut("q", modifiers: .command)
+        }
+        .frame(height: 32)
+    }
+
+    private var toolModeBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 2) {
+                ForEach(LiveConfigApp.allCases) { app in
+                    toolTab(app)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(4)
+            .frame(minHeight: 36)
+            .background(Color.primary.opacity(0.06), in: Capsule())
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 2) {
+                modeTab(title: "用量", icon: "chart.bar", isSelected: !showsConfig) {
+                    guard showsConfig else { return }
+                    showsConfig = false
+                }
+                .frame(maxWidth: .infinity)
+                modeTab(title: "配置", icon: "slider.horizontal.3", isSelected: showsConfig) {
+                    guard !showsConfig else { return }
+                    showsConfig = true
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(4)
+            .frame(width: 92, height: 36)
+            .background(Color.primary.opacity(0.06), in: Capsule())
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+    }
+
+    private func toolTab(_ app: LiveConfigApp) -> some View {
+        let isSelected = selectedTool == app
+        return Button {
+            selectTool(app)
+        } label: {
+            HStack(spacing: 5) {
+                ToolBrandImage(app: app, size: 14)
+                Text(app.title)
+                    .lineLimit(1)
+            }
+            .font(.caption.weight(isSelected ? .semibold : .medium))
+            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+            .frame(maxWidth: .infinity, minHeight: 28)
+            .padding(.horizontal, 6)
+            .background(isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear, in: Capsule())
+            .shadow(color: .black.opacity(isSelected ? 0.06 : 0), radius: 2, y: 1)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func modeTab(title: String, icon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.caption.weight(isSelected ? .semibold : .medium))
+                .symbolVariant(isSelected ? .fill : .none)
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
+    }
+
+    private var headerSubtitle: String {
+        if showsConfig { return "" }
         if model.isRefreshing { return "· 正在刷新…" }
         if model.errorMessage != nil && model.snapshot == nil { return "· 读取失败" }
-        if model.selectedProvider == .overview {
-            return "· \(model.availableSources.count)/\(model.sourceIDs.count) 个来源"
-        }
         if let refreshedAt = model.lastCheckedAt {
             let dateStyle: Date.FormatStyle.DateStyle = model.isToday(model.selectedProvider) ? .omitted : .abbreviated
             return "· \(refreshedAt.formatted(date: dateStyle, time: .shortened)) 检查"
@@ -271,17 +310,6 @@ struct UsagePopoverView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                if let cost = model.optionalOutputCost {
-                    HStack {
-                        Text("已定价模型输出成本")
-                        Spacer()
-                        Text(Format.cost(cost)).monospacedDigit()
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    Text("仅含有价格的完成步骤记录，非完整费用或账单。")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
             }
         }
     }
@@ -315,7 +343,7 @@ struct UsagePopoverView: View {
                 ForEach(Array(models.prefix(4))) { item in
                     ModelRow(item: item, maximumOutput: maximum)
                 }
-                Text(model.selectedProvider == .zcode ? "仅含完成步骤记录" : "仅含可识别的本地用量；非账单")
+                Text("仅含可识别的本地用量；非账单")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -384,29 +412,72 @@ struct UsagePopoverView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func selectTool(_ tool: LiveConfigApp) {
+        guard selectedTool != tool else { return }
+        selectedTool = tool
+        model.selectedProvider = tool.usageProvider
+        configModel.app = tool
+        persistSelectedTool(tool)
+    }
+
+    private func syncOnAppear() {
+        let saved = UserDefaults.standard.string(forKey: Self.selectedToolKey)
+        let tool = LiveConfigApp(rawValue: saved ?? "")
+            ?? LiveConfigApp(usageProvider: model.selectedProvider)
+            ?? .codex
+        selectedTool = tool
+        model.selectedProvider = tool.usageProvider
+        configModel.app = tool
+        persistSelectedTool(tool)
+        configModel.loadOnce()
+    }
+
+    private func persistSelectedTool(_ tool: LiveConfigApp) {
+        UserDefaults.standard.set(tool.rawValue, forKey: Self.selectedToolKey)
+    }
+
+    private static let selectedToolKey = "selectedTool"
+
     private func openDataDirectory() {
-        NSWorkspace.shared.open(model.selectedProvider.directory)
+        NSWorkspace.shared.open(showsConfig ? configModel.configDirectory : model.selectedProvider.directory)
     }
 }
 
-private struct SurfaceCard<Content: View>: View {
+struct SurfaceCard<Content: View>: View {
     let compact: Bool
+    let active: Bool
     @ViewBuilder let content: Content
 
-    init(compact: Bool = false, @ViewBuilder content: () -> Content) {
+    init(compact: Bool = false, active: Bool = false, @ViewBuilder content: () -> Content) {
         self.compact = compact
+        self.active = active
         self.content = content()
     }
 
     var body: some View {
         content
             .padding(compact ? 10 : 12)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: .black.opacity(0.035), radius: 4, x: 0, y: 2)
+            .background(cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(active ? 0.05 : 0.035), radius: 4, x: 0, y: 2)
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
+                    .strokeBorder(
+                        active ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.07),
+                        lineWidth: active ? 1 : 0.5
+                    )
             }
+            .overlay(alignment: .leading) {
+                if active {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                        .padding(.vertical, 8)
+                }
+            }
+    }
+
+    private var cardBackground: Color {
+        active ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor)
     }
 }
 
@@ -477,5 +548,49 @@ private struct ModelRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.modelID)，已记录输出 \(Format.token(item.outputTokens))，\(Format.count(item.requests)) 请求")
+    }
+}
+
+private struct HeaderIconButton: View {
+    let systemName: String
+    let help: String
+    var disabled: Bool = false
+    var spinning: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if spinning {
+                    SpinningSymbol(systemName: systemName)
+                } else {
+                    Image(systemName: systemName)
+                }
+            }
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(disabled ? Color.secondary.opacity(0.35) : Color.primary)
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
+private struct SpinningSymbol: View {
+    let systemName: String
+    @State private var rotation: Double = 0
+
+    var body: some View {
+        Image(systemName: systemName)
+            .rotationEffect(.degrees(rotation))
+            .onAppear {
+                rotation = 0
+                withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
+                    rotation = 360
+                }
+            }
     }
 }

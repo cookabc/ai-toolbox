@@ -1,13 +1,11 @@
 import Foundation
 
 enum UsageProviderID: String, CaseIterable, Identifiable, Sendable {
-    case overview, zcode, codex, claude
+    case codex, claude
 
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .overview: "总览"
-        case .zcode: "ZCode"
         case .codex: "Codex"
         case .claude: "Claude Code"
         }
@@ -16,8 +14,6 @@ enum UsageProviderID: String, CaseIterable, Identifiable, Sendable {
     var directory: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
         switch self {
-        case .overview: return home
-        case .zcode: return home.appending(path: ".zcode/cli/db")
         case .codex: return home.appending(path: ".codex")
         case .claude: return home.appending(path: ".claude/projects")
         }
@@ -51,12 +47,6 @@ struct UsageCoverage: Equatable, Sendable {
 protocol UsageProvider: Sendable {
     var id: UsageProviderID { get }
     func load() throws -> UsageSnapshot
-}
-
-struct ZCodeUsageProvider: UsageProvider {
-    let id = UsageProviderID.zcode
-    var repository = UsageRepository()
-    func load() throws -> UsageSnapshot { try repository.load() }
 }
 
 enum ProviderReadError: LocalizedError, Sendable {

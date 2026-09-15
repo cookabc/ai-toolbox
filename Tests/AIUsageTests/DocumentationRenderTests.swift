@@ -18,7 +18,7 @@ final class DocumentationRenderTests: XCTestCase {
         let icon = try XCTUnwrap(NSImage(contentsOf: root.appending(path: "Assets/AppIcon.png")))
         app.applicationIconImage = icon
         let instant = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 14, hour: 9, minute: 41))!
-        let providers = [UsageProviderID.zcode, .codex, .claude].enumerated().map { index, id in
+        let providers = [UsageProviderID.codex, .claude].enumerated().map { index, id in
             DocumentationProvider(id: id, snapshot: fixture(at: instant, index: index))
         }
         let model = UsageViewModel(providers: providers, preferences: nil, now: { instant })
@@ -27,10 +27,10 @@ final class DocumentationRenderTests: XCTestCase {
             if !model.isRefreshing { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertEqual(model.availableSources.count, 3)
+        XCTAssertEqual(model.sourceIDs.count, 2)
         for dark in [false, true] {
             app.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            model.selectedProvider = .zcode
+            model.selectedProvider = .codex
             let panel = UsagePopoverView(model: model)
                 .environment(\.colorScheme, dark ? .dark : .light)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -41,16 +41,16 @@ final class DocumentationRenderTests: XCTestCase {
             try render(panel, dark: dark, to: output.appending(path: "detail-\(dark ? "dark" : "light").png"))
         }
         app.appearance = NSAppearance(named: .aqua)
-        model.selectedProvider = .overview
+        model.selectedProvider = .codex
         let hero = HStack(spacing: 54) {
             VStack(alignment: .leading, spacing: 22) {
                 Image(nsImage: icon).resizable().frame(width: 88, height: 88)
-                Text("AI Usage").font(.system(size: 54, weight: .bold, design: .rounded))
+                Text("AI Toolbox").font(.system(size: 54, weight: .bold, design: .rounded))
                     .foregroundStyle(Color(red: 0.10, green: 0.15, blue: 0.25))
                 Text("Your coding tools.\nOne quiet corner.")
                     .font(.system(size: 26, weight: .medium)).lineSpacing(6)
                     .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.50))
-                Text("ZCode  /  Codex  /  Claude Code")
+                Text("Codex  /  Claude Code")
                     .font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
                 HStack(spacing: 18) {
                     Label("Native macOS", systemImage: "macwindow")
@@ -87,8 +87,8 @@ final class DocumentationRenderTests: XCTestCase {
                         cacheCreationInputTokens: 200_000, toolCalls: 82)
         }
         return UsageSnapshot(refreshedAt: date,
-                             totals: totals(output: [14_200_000, 10_500_000, 334_000][index]),
-                             today: totals(output: [248_000, 27_000, 12_000][index]),
+                             totals: totals(output: [10_500_000, 334_000][index]),
+                             today: totals(output: [27_000, 12_000][index]),
                              models: [ModelUsage(modelID: "Model Alpha", providerID: "local", requests: 96, outputTokens: 180_000),
                                       ModelUsage(modelID: "Model Beta", providerID: "local", requests: 32, outputTokens: 68_000)])
     }
