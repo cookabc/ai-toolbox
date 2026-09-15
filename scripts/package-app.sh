@@ -18,6 +18,11 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$package_dir/AppIcon.iconset" -o "$app_dir/Contents/Resources/AppIcon.icns"
 cp "$binary_dir/AIUsage" "$app_dir/Contents/MacOS/"
+resource_bundle="$binary_dir/AIUsage_AIUsage.bundle"
+if [[ -d "$resource_bundle" ]]; then
+    cp "$resource_bundle"/BrandClaude.svg "$app_dir/Contents/Resources/"
+    cp "$resource_bundle"/BrandCodex.svg "$app_dir/Contents/Resources/"
+fi
 cp Info.plist "$app_dir/Contents/Info.plist"
 codesign --force --sign - "$app_dir"
 codesign --verify --strict "$app_dir"
