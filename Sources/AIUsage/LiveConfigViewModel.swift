@@ -462,3 +462,66 @@ final class LiveConfigViewModel: ObservableObject {
         if messages[target]?.isError == true { messages[target] = nil }
     }
 }
+
+extension LiveConfigViewModel {
+    static func documentation(app: LiveConfigApp) -> LiveConfigViewModel {
+        let model = LiveConfigViewModel()
+        model.seedDocumentation(app: app)
+        return model
+    }
+
+    func seedDocumentation(app: LiveConfigApp) {
+        hasLoaded = true
+        self.app = app
+        let relayID = UUID()
+        let claudeID = UUID()
+        providers = [
+            StoredProvider(
+                id: relayID,
+                app: .codex,
+                name: "Relay API",
+                slug: "relay-api",
+                baseURL: "https://relay.example/v1",
+                model: "gpt-5",
+                apiKey: "sk-doc-relay-key"
+            ),
+            StoredProvider(
+                id: claudeID,
+                app: .claude,
+                name: "Company Gateway",
+                slug: "company-gateway",
+                baseURL: "https://api.company.test/v1",
+                model: "claude-sonnet-4",
+                apiKey: "sk-ant-doc-key"
+            ),
+        ]
+        switch app {
+        case .codex:
+            hasCodexFile = true
+            codexLive = CodexLiveSettings(
+                model: "gpt-5",
+                currentProviderID: "relay-api",
+                providers: [
+                    CodexTomlEditor.builtInOpenAI,
+                    CodexProviderRecord(
+                        id: "relay-api",
+                        name: "Relay API",
+                        baseURL: "https://relay.example/v1",
+                        hasAPIKey: true,
+                        maskedAPIKey: SecretDisplay.mask("sk-doc-relay-key"),
+                        isBuiltIn: false
+                    ),
+                ]
+            )
+        case .claude:
+            let claude = providers.first { $0.id == claudeID }!
+            claudeLive = ClaudeLiveSettings(
+                baseURL: claude.baseURL,
+                model: claude.model,
+                hasAPIKey: true,
+                maskedAPIKey: SecretDisplay.mask(claude.apiKey)
+            )
+            claudeSecret = claude.apiKey
+        }
+    }
+}

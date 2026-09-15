@@ -28,36 +28,43 @@ final class DocumentationRenderTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(model.sourceIDs.count, 2)
+        model.selectedProvider = .codex
+
         for dark in [false, true] {
             app.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            model.selectedProvider = .codex
-            let panel = UsagePopoverView(model: model)
-                .environment(\.colorScheme, dark ? .dark : .light)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
-                .shadow(color: .black.opacity(dark ? 0.25 : 0.10), radius: 16, y: 8)
-                .padding(28)
-                .background(dark ? Color(red: 0.07, green: 0.09, blue: 0.14) : Color(red: 0.94, green: 0.95, blue: 0.98))
-            try render(panel, dark: dark, to: output.appending(path: "detail-\(dark ? "dark" : "light").png"))
+            try render(
+                panel(model: model, showsConfig: false),
+                dark: dark,
+                to: output.appending(path: "detail-\(dark ? "dark" : "light").png")
+            )
+            try render(
+                panel(
+                    model: model,
+                    showsConfig: true,
+                    configViewModel: LiveConfigViewModel.documentation(app: .codex)
+                ),
+                dark: dark,
+                to: output.appending(path: "config-\(dark ? "dark" : "light").png")
+            )
         }
+
         app.appearance = NSAppearance(named: .aqua)
-        model.selectedProvider = .codex
         let hero = HStack(spacing: 54) {
             VStack(alignment: .leading, spacing: 22) {
                 Image(nsImage: icon).resizable().frame(width: 88, height: 88)
-                Text("AI Toolbox").font(.system(size: 54, weight: .bold, design: .rounded))
+                Text(AppBranding.title).font(.system(size: 54, weight: .bold, design: .rounded))
                     .foregroundStyle(Color(red: 0.10, green: 0.15, blue: 0.25))
-                Text("Your coding tools.\nOne quiet corner.")
-                    .font(.system(size: 26, weight: .medium)).lineSpacing(6)
+                Text("把 Codex 与 Claude Code\n的用量和供应商配置，放进菜单栏的一角。")
+                    .font(.system(size: 24, weight: .medium)).lineSpacing(6)
                     .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.50))
                 Text("Codex  /  Claude Code")
                     .font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
                 HStack(spacing: 18) {
-                    Label("Native macOS", systemImage: "macwindow")
-                    Label("Local data", systemImage: "internaldrive")
+                    Label("原生 macOS", systemImage: "macwindow")
+                    Label("本地数据", systemImage: "internaldrive")
                 }.font(.system(size: 13)).foregroundStyle(.secondary)
-            }.frame(width: 400, alignment: .leading)
-            UsagePopoverView(model: model)
+            }.frame(width: 420, alignment: .leading)
+            panel(model: model, showsConfig: false)
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.black.opacity(0.06), lineWidth: 1))
                 .shadow(color: .indigo.opacity(0.14), radius: 28, y: 14)
@@ -70,8 +77,28 @@ final class DocumentationRenderTests: XCTestCase {
         try render(hero, dark: false, to: output.appending(path: "hero.png"))
     }
 
+    private func panel(
+        model: UsageViewModel,
+        showsConfig: Bool,
+        configViewModel: LiveConfigViewModel? = nil
+    ) -> some View {
+        UsagePopoverView(
+            model: model,
+            initialSelectedTool: .codex,
+            initialShowsConfig: showsConfig,
+            configViewModel: configViewModel
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.10), radius: 16, y: 8)
+        .padding(28)
+    }
+
     private func render<V: View>(_ content: V, dark: Bool, to url: URL) throws {
-        let view = NSHostingView(rootView: content)
+        let wrapped = content
+            .background(dark ? Color(red: 0.07, green: 0.09, blue: 0.14) : Color(red: 0.94, green: 0.95, blue: 0.98))
+            .environment(\.colorScheme, dark ? .dark : .light)
+        let view = NSHostingView(rootView: wrapped)
         view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         view.frame = NSRect(origin: .zero, size: view.fittingSize)
         view.layoutSubtreeIfNeeded()

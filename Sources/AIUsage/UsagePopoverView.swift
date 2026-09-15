@@ -8,6 +8,18 @@ struct UsagePopoverView: View {
     @State private var showsConfig = false
     @State private var pendingClearClaude = false
 
+    init(
+        model: UsageViewModel,
+        initialSelectedTool: LiveConfigApp = .codex,
+        initialShowsConfig: Bool = false,
+        configViewModel: LiveConfigViewModel? = nil
+    ) {
+        self.model = model
+        _selectedTool = State(initialValue: initialSelectedTool)
+        _showsConfig = State(initialValue: initialShowsConfig)
+        _configModel = StateObject(wrappedValue: configViewModel ?? LiveConfigViewModel())
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
