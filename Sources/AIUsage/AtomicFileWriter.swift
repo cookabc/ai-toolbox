@@ -5,7 +5,7 @@ enum AtomicFileWriter {
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if backup, FileManager.default.fileExists(atPath: url.path) {
-            let backup = URL(fileURLWithPath: url.path + ".ai-usage.bak")
+            let backup = URL(fileURLWithPath: url.path + ".ai-toolbox.bak")
             if FileManager.default.fileExists(atPath: backup.path) {
                 try FileManager.default.removeItem(at: backup)
             }

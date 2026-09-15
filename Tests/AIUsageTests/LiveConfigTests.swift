@@ -37,7 +37,7 @@ final class LiveConfigTests: XCTestCase {
         let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
         let env = object?["env"] as? [String: String]
         XCTAssertEqual(env?["CLAUDE_CODE_EFFORT_LEVEL"], "high")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path + ".ai-usage.bak"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path + ".ai-toolbox.bak"))
     }
 
     func testClaudeClearRemovesAPIOverlayOnly() throws {

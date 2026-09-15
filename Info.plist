@@ -5,15 +5,15 @@
   <key>CFBundleDisplayName</key>
   <string>AI Toolbox</string>
   <key>CFBundleExecutable</key>
-  <string>AIUsage</string>
+  <string>AIToolbox</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.cookabc.ai-usage</string>
+  <string>io.github.cookabc.ai-toolbox</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>AIUsage</string>
+  <string>AIToolbox</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

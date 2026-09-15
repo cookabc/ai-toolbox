@@ -36,9 +36,32 @@ struct StoredProvider: Codable, Identifiable, Equatable, Sendable {
 struct ProviderLibraryStore: Sendable {
     let url: URL
 
+    private static let supportDirectoryName = "AIToolbox"
+    private static let legacySupportDirectoryName = "AIUsage"
+
     static var defaultURL: URL {
+        migrateLegacySupportDataIfNeeded()
+        return supportDirectoryURL.appending(path: "providers.json")
+    }
+
+    private static var supportDirectoryURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/AIUsage/providers.json")
+            .appending(path: "Library/Application Support/\(supportDirectoryName)")
+    }
+
+    private static func migrateLegacySupportDataIfNeeded() {
+        let fileManager = FileManager.default
+        let newDirectory = supportDirectoryURL
+        let newFile = newDirectory.appending(path: "providers.json")
+        guard !fileManager.fileExists(atPath: newFile.path) else { return }
+
+        let legacyDirectory = fileManager.homeDirectoryForCurrentUser
+            .appending(path: "Library/Application Support/\(legacySupportDirectoryName)")
+        let legacyFile = legacyDirectory.appending(path: "providers.json")
+        guard fileManager.fileExists(atPath: legacyFile.path) else { return }
+
+        try? fileManager.createDirectory(at: newDirectory, withIntermediateDirectories: true)
+        try? fileManager.copyItem(at: legacyFile, to: newFile)
     }
 
     init(url: URL = ProviderLibraryStore.defaultURL) {

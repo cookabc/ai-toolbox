@@ -15,11 +15,11 @@ Codex 与 Claude Code 的输入和缓存按来源字段分别显示，不推算�
 
 ## 供应商配置
 
-供应商库保存在 `~/Library/Application Support/AIUsage/providers.json`。面板切换供应商时，会更新下方「当前生效文件」中的对应项。
+供应商库保存在 `~/Library/Application Support/AIToolbox/providers.json`。面板切换供应商时，会更新下方「当前生效文件」中的对应项。
 
 | 工具 | 当前生效文件 | 写入范围 |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` | `env` 中的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL`、`ANTHROPIC_API_KEY`；保存模型时若已有 `ANTHROPIC_DEFAULT_*` / `CLAUDE_CODE_SUBAGENT_MODEL` 则一并更新。清除覆盖项会删除上述 Key，其余 env 保留 |
 | Codex | `~/.codex/config.toml` | 根级 `model`、`model_provider`，以及 `[model_providers.<id>]` 的 `name` / `base_url` / `wire_api` / `experimental_bearer_token`。其它段落原样保留。内置 `openai` 只能切换，不能删除 |
 
-自定义 Codex 供应商 ID 在库内自动生成，不在列表卡片中展示。不能使用保留 ID：`openai`、`ollama`、`lmstudio`。Key 写入 `experimental_bearer_token`；不会改 `auth.json`。每次成功写入会在同路径覆盖 `.ai-usage.bak`。
+自定义 Codex 供应商 ID 在库内自动生成，不在列表卡片中展示。不能使用保留 ID：`openai`、`ollama`、`lmstudio`。Key 写入 `experimental_bearer_token`；不会改 `auth.json`。每次成功写入会在同路径覆盖 `.ai-toolbox.bak`。

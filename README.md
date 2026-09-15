@@ -45,11 +45,11 @@ AI 工具台是一个 macOS 菜单栏应用，集中展示 **Codex** 与 **Claud
 需要 **macOS 13+** 和 **Xcode / Swift 6**。使用系统 SwiftUI 与 AppKit，无第三方 Swift 包依赖。
 
 ```bash
-git clone https://github.com/cookabc/ai-usage.git
-cd ai-usage
+git clone https://github.com/cookabc/ai-toolbox.git
+cd ai-toolbox
 swift test
 bash scripts/package-app.sh
-open dist/AIUsage.app
+open dist/AIToolbox.app
 ```
 
 应用启动后显示在 **macOS 菜单栏**，不会出现在 Dock 中。
@@ -77,7 +77,7 @@ open dist/AIUsage.app
 
 用量统计不上传会话内容，也不向源数据库写入业务数据。日志逐行处理，不保留会话正文或工具参数。
 
-**供应商库**保存在 `~/Library/Application Support/AIUsage/providers.json`。配置面板会读写当前生效文件：`~/.claude/settings.json` 的 `env` 覆盖项，以及 `~/.codex/config.toml` 的 `model` / `model_provider` / `[model_providers.*]`。API Key 留在这些本机文件中，界面默认掩码；写入前会在同目录留下 `.ai-usage.bak`。不修改 `~/.codex/auth.json`。
+**供应商库**保存在 `~/Library/Application Support/AIToolbox/providers.json`。配置面板会读写当前生效文件：`~/.claude/settings.json` 的 `env` 覆盖项，以及 `~/.codex/config.toml` 的 `model` / `model_provider` / `[model_providers.*]`。API Key 留在这些本机文件中，界面默认掩码；写入前会在同目录留下 `.ai-toolbox.bak`。不修改 `~/.codex/auth.json`。
 
 首次读取或历史记录较多时，扫描可能需要一些时间，期间可切换到另一工具。
 
