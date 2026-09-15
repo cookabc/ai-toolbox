@@ -7,14 +7,6 @@ struct AIUsageApp: App {
 
     init() {
         UserDefaults.standard.set(0.05, forKey: "NSInitialToolTipDelay")
-        // Preserve the selected tool when upgrading from the previous bundle ID.
-        let preferences = UserDefaults.standard
-        if preferences.string(forKey: "selectedUsageProvider") == nil,
-           let previous = preferences.persistentDomain(forName: "local.zcode.usage-menu")?["selectedUsageProvider"] as? String {
-            let migrated = previous == UsageProviderID.claude.rawValue ? UsageProviderID.claude.rawValue : UsageProviderID.codex.rawValue
-            preferences.set(migrated, forKey: "selectedUsageProvider")
-            preferences.set(migrated == UsageProviderID.claude.rawValue ? LiveConfigApp.claude.rawValue : LiveConfigApp.codex.rawValue, forKey: "selectedTool")
-        }
         let codexRoot = UsageProviderID.codex.directory
         let usageModel = UsageViewModel(providers: [
             CachedTranscriptProvider(provider: CodexUsageProvider(), roots: [codexRoot.appending(path: "sessions"), codexRoot.appending(path: "archived_sessions")]),

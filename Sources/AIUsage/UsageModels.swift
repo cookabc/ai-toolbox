@@ -57,24 +57,12 @@ struct UsageSnapshot: Equatable, Sendable {
     )
 }
 
-struct UsagePrice: Decodable, Sendable {
-    let output: Double?
-}
-
 enum UsageError: LocalizedError, Equatable, Sendable {
-    case databaseMissing(URL)
-    case databaseOpen(String)
     case query(String)
-    case sqliteRead(Int32, String)
-    case databaseChanging
 
     var errorDescription: String? {
         switch self {
-        case .databaseMissing(let url): "找不到 ZCode 用量数据库：\(url.path)"
-        case .databaseOpen(let message): "无法只读打开 ZCode 用量数据库：\(message)"
-        case .query(let message): "读取用量数据失败：\(message)"
-        case .sqliteRead(_, let message): "无法读取数据库：\(message)。请打开 ZCode 后重新读取。"
-        case .databaseChanging: "ZCode 数据库正在使用或更新，暂时无法安全读取副本。请稍后重试。"
+        case .query(let message): message
         }
     }
 }

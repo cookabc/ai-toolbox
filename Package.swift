@@ -10,13 +10,11 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AIUsage",
-            resources: [.process("Resources")],
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "AIUsageTests",
-            dependencies: ["AIUsage"],
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            dependencies: ["AIUsage"]
         ),
     ]
 )

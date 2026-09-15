@@ -42,7 +42,7 @@ AI 工具台是一个 macOS 菜单栏应用，集中展示 **Codex** 与 **Claud
 
 ## 快速开始
 
-需要 **macOS 13+** 和 **Xcode / Swift 6**。使用系统 SwiftUI、AppKit 与 SQLite，无第三方 Swift 包依赖。
+需要 **macOS 13+** 和 **Xcode / Swift 6**。使用系统 SwiftUI 与 AppKit，无第三方 Swift 包依赖。
 
 ```bash
 git clone https://github.com/cookabc/ai-usage.git
@@ -108,8 +108,6 @@ USAGE_LOCAL_SMOKE=1 swift test --filter MultiProviderTests/testLocalSourcesWhenE
 ```bash
 USAGE_RENDER_DOCS=1 swift test --filter DocumentationRenderTests
 ```
-
-历史版本用户可参阅 [迁移说明](docs/migration.md)。
 
 ## License
 
