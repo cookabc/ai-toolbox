@@ -29,12 +29,20 @@ AI 工具台是一个 macOS 菜单栏应用，集中展示 **Codex** 与 **Claud
 
 <table>
   <tr>
-    <td align="center"><strong>浅色 · 用量与配置</strong></td>
-    <td align="center"><strong>深色 · 同样清晰的统计层级</strong></td>
+    <td align="center"><strong>浅色 · 用量</strong></td>
+    <td align="center"><strong>深色 · 用量</strong></td>
   </tr>
   <tr>
-    <td><img src="docs/images/detail-light.png" alt="浅色模式：今日输出、输入构成、累计用量和模型排行" width="440"></td>
-    <td><img src="docs/images/detail-dark.png" alt="深色模式：同一原生用量详情面板" width="440"></td>
+    <td><img src="docs/images/detail-light.png" alt="浅色模式：Codex 今日输出、输入构成、累计用量和模型排行" width="440"></td>
+    <td><img src="docs/images/detail-dark.png" alt="深色模式：Codex 用量详情面板" width="440"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>浅色 · 配置</strong></td>
+    <td align="center"><strong>深色 · 配置</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/config-light.png" alt="浅色模式：Codex 供应商列表与切换" width="440"></td>
+    <td><img src="docs/images/config-dark.png" alt="深色模式：Codex 供应商配置面板" width="440"></td>
   </tr>
 </table>
 
@@ -88,7 +96,7 @@ Assets/       应用图标及生成提示词
 Sources/      SwiftUI 界面、数据来源与刷新逻辑
 Tests/        聚合、去重、缓存、异常和状态测试
 scripts/      macOS 应用打包
-docs/         统计口径与界面图片
+docs/         统计口径与界面截图
 ```
 
 ```bash
@@ -103,11 +111,13 @@ bash scripts/package-app.sh        # 打包并验证签名
 USAGE_LOCAL_SMOKE=1 swift test --filter MultiProviderTests/testLocalSourcesWhenExplicitlyEnabled
 ```
 
-重新生成 README 图片，不读取本机会话：
+重新生成 README 截图，不读取本机会话：
 
 ```bash
 USAGE_RENDER_DOCS=1 swift test --filter DocumentationRenderTests
 ```
+
+会更新 `docs/images/` 下的 `hero.png`、`detail-*.png` 与 `config-*.png`。
 
 ## License
 

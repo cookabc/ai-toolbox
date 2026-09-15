@@ -1,5 +1,7 @@
 # 数据来源与统计口径
 
+AI 工具台（AI Toolbox）从本机 Codex 与 Claude Code 日志读取用量，并在配置面板写入对应的供应商设置。
+
 | 来源 | 默认路径 | 统计方式 |
 | --- | --- | --- |
 | Codex | `~/.codex/sessions`、`~/.codex/archived_sessions` | 读取 `token_usage_record.payload.usage`，按响应 ID 去重，模型通过 `turn_context` 关联 |
