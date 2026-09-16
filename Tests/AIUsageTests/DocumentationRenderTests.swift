@@ -100,7 +100,18 @@ final class DocumentationRenderTests: XCTestCase {
             .environment(\.colorScheme, dark ? .dark : .light)
         let view = NSHostingView(rootView: wrapped)
         view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+
+        // The panel sizes itself from its measured body height, which converges over a
+        // layout pass or two. Measuring once captures a pre-convergence frame (visible
+        // as dead space in the screenshot), so let it settle first.
         view.frame = NSRect(origin: .zero, size: view.fittingSize)
+        for _ in 0..<8 {
+            view.layoutSubtreeIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            let settled = view.fittingSize
+            if abs(settled.height - view.frame.height) < 0.5 { break }
+            view.frame = NSRect(origin: .zero, size: settled)
+        }
         view.layoutSubtreeIfNeeded()
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)
