@@ -18,23 +18,70 @@ struct UsagePopoverView: View {
         _selectedTool = State(initialValue: initialSelectedTool)
         _showsConfig = State(initialValue: initialShowsConfig)
         _configModel = StateObject(wrappedValue: configViewModel ?? LiveConfigViewModel())
+        _bodyHeight = State(initialValue: Self.cachedHeight(
+            Self.bodyHeightKey(tool: initialSelectedTool, config: initialShowsConfig),
+            fallback: Self.panelMaxHeight
+        ))
+        _chromeHeight = State(initialValue: Self.cachedHeight(Self.chromeHeightKey, fallback: 0))
     }
+
+    /// The panel is content-fitted, so it never leaves a blank area under short
+    /// content, but capped so a long provider list cannot run off the bottom of the
+    /// screen.
+    ///
+    /// A fitted height means the window changes size as you switch tools, and AppKit
+    /// resizes a window by keeping its *origin* (bottom-left). The panel hangs from
+    /// the menu bar, so its **top** edge is the one that must not move. `PanelTopAnchor`
+    /// takes this height and applies it together with the menu-bar anchoring, which is
+    /// what makes a fitted height safe here — see that type for why the two belong in
+    /// one operation.
+    ///
+    /// This is the **total** panel height, chrome included; the body is capped at
+    /// `panelMaxHeight - chromeHeight` so the whole panel — not just the body — stays
+    /// within the limit.
+    static let panelWidth: CGFloat = 400
+    static let panelMaxHeight: CGFloat = 602
+
+    /// Natural height of the mode-dependent content, measured during layout.
+    ///
+    /// Seeded from the **last measured height for this tool and mode** rather than from
+    /// the maximum. Both a 0 seed and a maximum seed force a resize on every open — the
+    /// first frame is wrong by the whole height difference, the window is already on
+    /// screen when it is corrected, and a resize is what moves the top edge. Remembering
+    /// the height makes the first frame right for every tool you have already looked at,
+    /// which removes the jump at open rather than correcting it afterwards.
+    @State private var bodyHeight: CGFloat = panelMaxHeight
+    /// Height of the header + mode bar, measured so the body's cap stays correct when
+    /// the chrome changes instead of relying on a hard-coded number. Also remembered,
+    /// for the same reason — it is part of the first frame's height.
+    @State private var chromeHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            toolModeBar
-            ZStack(alignment: .top) {
-                if showsConfig {
-                    LiveConfigView(model: configModel)
-                } else {
-                    usageBody
+            VStack(spacing: 0) {
+                header
+                toolModeBar
+            }
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ChromeHeightKey.self, value: proxy.size.height)
                 }
             }
+            panelBody
         }
-        .frame(width: 400)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: Self.panelWidth)
+        .frame(height: panelHeight)
         .background(Color(nsColor: .windowBackgroundColor))
+        .background(PanelTopAnchor(height: panelHeight).frame(width: 0, height: 0))
+        .onPreferenceChange(ChromeHeightKey.self) { measured in
+            if abs(measured - chromeHeight) > 0.5 { chromeHeight = measured }
+        }
+        .onChange(of: bodyHeight) { newValue in
+            Self.rememberHeight(newValue, Self.bodyHeightKey(tool: selectedTool, config: showsConfig))
+        }
+        .onChange(of: chromeHeight) { newValue in
+            Self.rememberHeight(newValue, Self.chromeHeightKey)
+        }
         .animation(nil, value: selectedTool)
         .animation(nil, value: showsConfig)
         .onAppear(perform: syncOnAppear)
@@ -44,6 +91,86 @@ struct UsagePopoverView: View {
         } message: {
             Text("将从 ~/.claude/settings.json 移除 Base URL、模型和 API Key 等覆盖项，其余 env 项保留。供应商库不受影响。")
         }
+    }
+
+    /// The only region whose content differs between tools and modes.
+    ///
+    /// The scroll view is given a **definite** height — `min(content, cap)` — rather
+    /// than a flexible one. Both alternatives are broken here, and neither is obvious:
+    ///
+    /// - A plain flexible `ScrollView` accepts whatever height it is proposed, so
+    ///   `MenuBarExtra` opening the window small leaves the body at ~0pt and the panel
+    ///   shows only its header. It is a stable (self-consistent) wrong answer, so it
+    ///   never recovers.
+    /// - `fixedSize` on the scroll view makes it as tall as its content, ignoring the
+    ///   cap — tall content is then clipped by the window and cannot be scrolled to.
+    ///
+    /// So the content is measured, and the height is set explicitly. `bodyHeight` starts
+    /// from the height remembered for this tool and mode, so the first frame is already
+    /// close and the window has less to grow or shrink through.
+    @ViewBuilder
+    private var panelBody: some View {
+        ScrollView(.vertical) {
+            VStack(spacing: 0) {
+                if showsConfig {
+                    LiveConfigView(model: configModel)
+                } else {
+                    usageBody
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: PanelBodyHeightKey.self, value: proxy.size.height)
+                }
+            }
+        }
+        .frame(height: min(max(bodyHeight, 1), maxBodyHeight))
+        .onPreferenceChange(PanelBodyHeightKey.self) { measured in
+            if abs(measured - bodyHeight) > 0.5 { bodyHeight = measured }
+        }
+    }
+
+    /// What the body may occupy once the chrome has taken its share of the panel.
+    /// Derived rather than hard-coded so `panelMaxHeight` stays the *total* limit even
+    /// if the header changes.
+    private var maxBodyHeight: CGFloat {
+        max(1, Self.panelMaxHeight - chromeHeight)
+    }
+
+    /// The panel's total height: measured content plus measured chrome, clamped to
+    /// `panelMaxHeight`.
+    ///
+    /// Set explicitly on the root view rather than letting the stack sum its children.
+    /// Left to sum, the seed values (`bodyHeight` at the cap while `chromeHeight` is
+    /// still unmeasured) produce a first frame of cap + chrome — 704pt against a 602pt
+    /// limit — and an over-tall frame shrinking is exactly the resize that drags the top
+    /// edge away from the menu bar. Clamping the total means the first frame is already
+    /// within the limit.
+    private var panelHeight: CGFloat {
+        min(maxBodyHeight, max(bodyHeight, 1)) + chromeHeight
+    }
+
+    // MARK: - Remembered heights
+
+    private static func bodyHeightKey(tool: LiveConfigApp, config: Bool) -> String {
+        "panelBodyHeight.\(tool.rawValue).\(config ? "config" : "usage")"
+    }
+
+    private static let chromeHeightKey = "panelChromeHeight"
+
+    /// A remembered height is only ever used as a starting point — it is clamped and
+    /// replaced by the first real measurement — so a stale value costs one extra frame
+    /// rather than a wrong layout.
+    private static func cachedHeight(_ key: String, fallback: CGFloat) -> CGFloat {
+        let value = UserDefaults.standard.double(forKey: key)
+        guard value > 1 else { return fallback }
+        return min(CGFloat(value), panelMaxHeight)
+    }
+
+    private static func rememberHeight(_ value: CGFloat, _ key: String) {
+        guard value > 1, value <= panelMaxHeight else { return }
+        UserDefaults.standard.set(Double(value), forKey: key)
     }
 
     @ViewBuilder
@@ -63,7 +190,7 @@ struct UsagePopoverView: View {
             .padding(.bottom, 14)
         } else {
             emptyState
-                .frame(maxWidth: .infinity, minHeight: 260)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(24)
         }
     }
@@ -604,5 +731,23 @@ private struct SpinningSymbol: View {
                     rotation = 360
                 }
             }
+    }
+}
+
+/// Reports the natural height of the panel body's content, which the panel uses to
+/// size itself (clamped to the panel's remaining budget).
+private struct PanelBodyHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Reports the height of the header + mode bar, so the body's cap can be derived
+/// instead of hard-coded.
+private struct ChromeHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
