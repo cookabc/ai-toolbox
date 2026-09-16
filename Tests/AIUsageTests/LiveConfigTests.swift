@@ -30,7 +30,9 @@ final class LiveConfigTests: XCTestCase {
             keepExistingKeyIfEmpty: true
         )
         let loaded = try ClaudeLiveSettingsStore.load(from: url)
-        XCTAssertEqual(loaded.settings.baseURL, "https://relay.test/")
+        // Written without the trailing slash: Claude Code appends "/v1/messages"
+        // itself, so "https://relay.test//v1/messages" would 404.
+        XCTAssertEqual(loaded.settings.baseURL, "https://relay.test")
         XCTAssertEqual(loaded.settings.model, "sonnet")
         XCTAssertEqual(loaded.secret, "sk-test-secret-key")
         XCTAssertEqual(loaded.settings.maskedAPIKey, "••••-key")
@@ -240,6 +242,142 @@ final class LiveConfigTests: XCTestCase {
         XCTAssertEqual(model.visibleProviders.map(\.name), ["Claude A"])
         model.app = .codex
         XCTAssertEqual(model.visibleProviders.map(\.name), ["Codex B"])
+    }
+
+    func testClaudeBaseURLNormalizationStripsOpenAIStyleVersionSegment() {
+        // Claude Code appends "/v1/messages" itself, so a base URL shared with
+        // Codex must lose its own OpenAI-style version segment first.
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1"),
+            "https://relay.test"
+        )
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1/"),
+            "https://relay.test"
+        )
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/api/v1"),
+            "https://relay.test/api"
+        )
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("  https://relay.test/v1  "),
+            "https://relay.test"
+        )
+        // Already in Claude Code form: only the trailing slash goes away.
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/"),
+            "https://relay.test"
+        )
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test"),
+            "https://relay.test"
+        )
+        // A path that merely starts with "v1" is not a version segment.
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1beta"),
+            "https://relay.test/v1beta"
+        )
+    }
+
+    func testClaudeSaveRewritesOpenAIStyleBaseURLToHostRoot() throws {
+        let url = try uniqueURL("settings.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try ClaudeLiveSettingsStore.save(
+            to: url,
+            baseURL: "https://router.example/v1",
+            model: "deepseek-v4.1-flash",
+            apiKey: "sk-test",
+            keepExistingKeyIfEmpty: false
+        )
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        let env = object?["env"] as? [String: String]
+        XCTAssertEqual(env?["ANTHROPIC_BASE_URL"], "https://router.example")
+        XCTAssertEqual(env?["ANTHROPIC_MODEL"], "deepseek-v4.1-flash")
+    }
+
+    @MainActor
+    func testActiveClaudeProviderMatchesDespiteVersionSegmentNormalization() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let paths = LiveConfigPaths(
+            claudeSettings: directory.appending(path: "settings.json"),
+            codexConfig: directory.appending(path: "config.toml")
+        )
+        let library = ProviderLibraryStore(url: directory.appending(path: "providers.json"))
+        // The stored provider keeps the OpenAI-style URL while the live file holds
+        // the normalized one; the card must still read as the active provider.
+        let provider = StoredProvider(
+            app: .claude, name: "ARouter", slug: "arouter",
+            baseURL: "https://router.example/v1", model: "deepseek-v4.1-flash", apiKey: "sk-a"
+        )
+        try library.save([provider])
+        let model = LiveConfigViewModel(paths: paths, library: library)
+        model.reload()
+        model.activate(provider)
+        for _ in 0..<100 where model.isBusy { await Task.yield() }
+
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.activeProviderID, provider.id)
+        XCTAssertFalse(model.liveConfigIsUnmanaged)
+        let loaded = try ClaudeLiveSettingsStore.load(from: paths.claudeSettings)
+        XCTAssertEqual(loaded.settings.baseURL, "https://router.example")
+    }
+
+    func testCodexFallbackToBuiltInOpenAIDropsRelayModel() throws {
+        // Activating a relay writes its model into the root `model` key.
+        let relay = try CodexTomlEditor.upsertProvider(
+            "model = \"gpt-5\"\npersonality = \"pragmatic\"\n",
+            id: "relay",
+            name: "Relay",
+            baseURL: "https://relay.test/v1",
+            apiKey: "sk-relay",
+            makeCurrent: true,
+            model: "deepseek-v4.1-flash"
+        )
+        XCTAssertEqual(CodexTomlEditor.load(relay).model, "deepseek-v4.1-flash")
+
+        // Switching back to the ChatGPT login must not leave that model behind:
+        // the account rejects it with a 400 on every request.
+        let official = CodexTomlEditor.switchToBuiltInOpenAI(relay)
+        let settings = CodexTomlEditor.load(official)
+        XCTAssertEqual(settings.currentProviderID, "openai")
+        XCTAssertEqual(settings.model, "")
+        XCTAssertFalse(official.contains("model = \"deepseek-v4.1-flash\""))
+        XCTAssertTrue(official.contains("personality = \"pragmatic\""))
+        XCTAssertTrue(official.contains("[model_providers.relay]"))
+    }
+
+    func testCodexDeletingTheCurrentProviderAlsoDropsItsModel() throws {
+        let relay = try CodexTomlEditor.upsertProvider(
+            "model = \"gpt-5\"\n",
+            id: "relay",
+            name: "Relay",
+            baseURL: "https://relay.test/v1",
+            apiKey: "sk-relay",
+            makeCurrent: true,
+            model: "deepseek-v4.1-flash"
+        )
+        let removed = try CodexTomlEditor.removeProvider(relay, id: "relay")
+        let settings = CodexTomlEditor.load(removed)
+        XCTAssertEqual(settings.currentProviderID, "openai")
+        XCTAssertEqual(settings.model, "")
+        XCTAssertFalse(removed.contains("model_providers.relay"))
+    }
+
+    func testCodexRemoveRootStringLeavesTableKeysAlone() {
+        let text = """
+        model = "deepseek-v4.1-flash"
+        model_provider = "relay"
+
+        [model_providers.relay]
+        name = "Relay"
+        base_url = "https://relay.test/v1"
+        """
+        let stripped = CodexTomlEditor.removeRootString(text, key: "model")
+        XCTAssertNil(CodexTomlEditor.rootString(stripped, key: "model"))
+        XCTAssertEqual(CodexTomlEditor.rootString(stripped, key: "model_provider"), "relay")
+        XCTAssertEqual(CodexTomlEditor.providerFields(in: stripped, id: "relay")["base_url"], "https://relay.test/v1")
     }
 
     private func uniqueURL(_ name: String) throws -> URL {

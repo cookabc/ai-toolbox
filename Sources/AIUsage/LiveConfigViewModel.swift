@@ -105,11 +105,11 @@ final class LiveConfigViewModel: ObservableObject {
     var activeProviderID: UUID? {
         switch app {
         case .claude:
-            let url = claudeLive.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let url = ClaudeLiveSettingsStore.normalizedBaseURL(claudeLive.baseURL)
             let model = claudeLive.model.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !url.isEmpty || !model.isEmpty else { return nil }
             return visibleProviders.first {
-                $0.baseURL.trimmingCharacters(in: .whitespacesAndNewlines) == url
+                ClaudeLiveSettingsStore.normalizedBaseURL($0.baseURL) == url
                     && $0.model.trimmingCharacters(in: .whitespacesAndNewlines) == model
             }?.id
         case .codex:
@@ -325,7 +325,7 @@ final class LiveConfigViewModel: ObservableObject {
         case .claude:
             let key = provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             claudeLive = ClaudeLiveSettings(
-                baseURL: provider.baseURL,
+                baseURL: ClaudeLiveSettingsStore.normalizedBaseURL(provider.baseURL),
                 model: provider.model,
                 hasAPIKey: key.isEmpty ? claudeLive.hasAPIKey : true,
                 maskedAPIKey: key.isEmpty ? claudeLive.maskedAPIKey : SecretDisplay.mask(key)
@@ -400,15 +400,17 @@ final class LiveConfigViewModel: ObservableObject {
         let hasFile = hasCodexFile
         try await Task.detached(priority: .userInitiated) {
             guard hasFile else { throw LiveConfigError.missingFile(paths.codexConfig) }
-            let next = CodexTomlEditor.switchProvider(codexSnapshot, to: "openai", model: nil)
+            let next = CodexTomlEditor.switchToBuiltInOpenAI(codexSnapshot)
             try CodexLiveSettingsStore.write(next, to: paths.codexConfig)
         }.value
     }
 
     /// Switches Codex back to the built-in OpenAI provider and official login.
+    /// The model is cleared with it: the relay's model ID is not one the ChatGPT
+    /// account accepts, so keeping it would fail every request.
     func useCodexOfficial() {
         codexLive = CodexLiveSettings(
-            model: codexLive.model,
+            model: "",
             currentProviderID: "openai",
             providers: codexLive.providers
         )

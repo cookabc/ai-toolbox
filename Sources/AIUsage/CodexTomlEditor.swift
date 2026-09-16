@@ -87,7 +87,7 @@ enum CodexTomlEditor {
         guard !ProviderIDRules.reservedCodexIDs.contains(id) else { throw LiveConfigError.reservedProviderID }
         var next = removeTables(text, id: id)
         if (rootString(next, key: "model_provider") ?? "openai") == id {
-            next = setRootString(next, key: "model_provider", value: "openai")
+            next = switchToBuiltInOpenAI(next)
         }
         return next
     }
@@ -129,6 +129,31 @@ enum CodexTomlEditor {
             result.insert(insertion, at: index)
         }
         return join(result, originally: text)
+    }
+
+    /// Drops a root-level key so Codex falls back to its own default.
+    static func removeRootString(_ text: String, key: String) -> String {
+        var result = lines(of: text)
+        var table: String?
+        for index in result.indices {
+            let line = result[index]
+            if let header = tableHeader(line) {
+                table = header
+                continue
+            }
+            guard table == nil, let assignment = assignment(line), assignment.key == key else { continue }
+            result.remove(at: index)
+            break
+        }
+        return join(result, originally: text)
+    }
+
+    /// The built-in provider signs in with the ChatGPT account and only accepts
+    /// OpenAI model IDs. Leaving a relay's `model` in place makes every request
+    /// fail with "The '<model>' model is not supported when using Codex with a
+    /// ChatGPT account", so drop the override and let Codex pick its own default.
+    static func switchToBuiltInOpenAI(_ text: String) -> String {
+        removeRootString(setRootString(text, key: "model_provider", value: "openai"), key: "model")
     }
 
     static func providerIDs(in text: String) -> [String] {

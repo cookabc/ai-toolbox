@@ -13,6 +13,23 @@ enum ClaudeLiveSettingsStore {
         "CLAUDE_CODE_SUBAGENT_MODEL",
     ]
 
+    /// Claude Code's Anthropic client appends `/v1/messages` to `ANTHROPIC_BASE_URL`
+    /// on its own. Providers are shared with Codex, which needs the OpenAI-style
+    /// `/v1` suffix, so writing that value through unchanged makes Claude Code
+    /// request `…/v1/v1/messages`. The gateway answers 404 and Claude Code reports
+    /// it as "There's an issue with the selected model", blaming the model instead
+    /// of the URL. Drop the trailing version segment so both tools can share one
+    /// stored provider.
+    static func normalizedBaseURL(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while value.hasSuffix("/") { value.removeLast() }
+        if value.hasSuffix("/v1") {
+            value.removeLast(3)
+            while value.hasSuffix("/") { value.removeLast() }
+        }
+        return value
+    }
+
     static func load(from url: URL) throws -> (settings: ClaudeLiveSettings, secret: String) {
         let object = try readObject(from: url)
         let env = stringEnv(object)
@@ -37,7 +54,7 @@ enum ClaudeLiveSettingsStore {
     ) throws {
         var root = (try? readObject(from: url)) ?? [:]
         var env = stringEnv(root)
-        let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedURL = normalizedBaseURL(baseURL)
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 

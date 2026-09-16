@@ -20,8 +20,14 @@ iconutil -c icns "$package_dir/AppIcon.iconset" -o "$app_dir/Contents/Resources/
 cp "$binary_dir/AIUsage" "$app_dir/Contents/MacOS/AIToolbox"
 resource_bundle="$binary_dir/AIUsage_AIUsage.bundle"
 if [[ -d "$resource_bundle" ]]; then
-    cp "$resource_bundle"/BrandClaude.svg "$app_dir/Contents/Resources/"
-    cp "$resource_bundle"/BrandCodex.svg "$app_dir/Contents/Resources/"
+    # SwiftPM emits a macOS-style bundle (Contents/Resources) on current toolchains
+    # and a flat one on older releases; pick whichever actually holds the icons.
+    resource_root="$resource_bundle"
+    if [[ -d "$resource_bundle/Contents/Resources" ]]; then
+        resource_root="$resource_bundle/Contents/Resources"
+    fi
+    cp "$resource_root"/BrandClaude.svg "$app_dir/Contents/Resources/"
+    cp "$resource_root"/BrandCodex.svg "$app_dir/Contents/Resources/"
 fi
 cp Info.plist "$app_dir/Contents/Info.plist"
 codesign --force --sign - "$app_dir"
