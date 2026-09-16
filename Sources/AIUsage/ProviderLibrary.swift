@@ -11,6 +11,11 @@ struct StoredProvider: Codable, Identifiable, Equatable, Sendable {
     var baseURL: String
     var model: String
     var apiKey: String
+    /// The extra `settings.json` keys this provider owns, e.g. the Claude Code model
+    /// aliases. Kept per provider so a switch writes exactly this provider's
+    /// settings instead of broadcasting one model across every alias. Empty for
+    /// Codex, and empty for any provider saved before this existed.
+    var extraEnv: [String: String]
 
     init(
         id: UUID = UUID(),
@@ -19,7 +24,8 @@ struct StoredProvider: Codable, Identifiable, Equatable, Sendable {
         slug: String,
         baseURL: String,
         model: String,
-        apiKey: String
+        apiKey: String,
+        extraEnv: [String: String] = [:]
     ) {
         self.id = id
         self.app = app
@@ -28,9 +34,28 @@ struct StoredProvider: Codable, Identifiable, Equatable, Sendable {
         self.baseURL = baseURL
         self.model = model
         self.apiKey = apiKey
+        self.extraEnv = extraEnv
     }
 
     var maskedAPIKey: String { SecretDisplay.mask(apiKey) }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, app, name, slug, baseURL, model, apiKey, extraEnv
+    }
+
+    /// Hand-written so a library written before `extraEnv` existed still decodes.
+    /// `encode(to:)` stays synthesised.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        app = try container.decode(LiveConfigApp.self, forKey: .app)
+        name = try container.decode(String.self, forKey: .name)
+        slug = try container.decode(String.self, forKey: .slug)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        model = try container.decode(String.self, forKey: .model)
+        apiKey = try container.decode(String.self, forKey: .apiKey)
+        extraEnv = try container.decodeIfPresent([String: String].self, forKey: .extraEnv) ?? [:]
+    }
 }
 
 struct ProviderLibraryStore: Sendable {

@@ -13,6 +13,16 @@ enum ClaudeLiveSettingsStore {
         "CLAUDE_CODE_SUBAGENT_MODEL",
     ]
 
+    /// The keys a saved provider is allowed to own. Curated deliberately: a switch
+    /// writes what the provider declares and nothing else, so it can never quietly
+    /// rewrite the rest of the user's `env`. Anything outside this list is left
+    /// exactly as the user wrote it.
+    static let perProviderKeys = familyModels + [
+        "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+        "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+        "CLAUDE_CODE_EFFORT_LEVEL",
+    ]
+
     /// Claude Code's Anthropic client appends `/v1/messages` to `ANTHROPIC_BASE_URL`
     /// on its own. Providers are shared with Codex, which needs the OpenAI-style
     /// `/v1` suffix, so writing that value through unchanged makes Claude Code
@@ -34,23 +44,42 @@ enum ClaudeLiveSettingsStore {
         let object = try readObject(from: url)
         let env = stringEnv(object)
         let secret = firstNonEmpty(env[apiKey], env[authToken]) ?? ""
+        var extra: [String: String] = [:]
+        for key in perProviderKeys {
+            let value = env[key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !value.isEmpty { extra[key] = value }
+        }
         return (
             ClaudeLiveSettings(
                 baseURL: env[baseURL] ?? "",
                 model: env[model] ?? "",
                 hasAPIKey: !secret.isEmpty,
-                maskedAPIKey: SecretDisplay.mask(secret)
+                maskedAPIKey: SecretDisplay.mask(secret),
+                extraEnv: extra
             ),
             secret
         )
     }
 
+    /// Writes one provider's settings into `settings.json`.
+    ///
+    /// Earlier versions pushed the provider's single `model` onto every existing
+    /// `ANTHROPIC_DEFAULT_*_MODEL` / `CLAUDE_CODE_SUBAGENT_MODEL` key. That silently
+    /// rewrote values the user had set for a reason — and it could not be undone,
+    /// because the overwritten value was never recorded anywhere. Now a provider
+    /// owns an explicit set of keys (`extraEnv`), and only those are written.
+    ///
+    /// `removingKeys` carries the keys some *other* provider owns but this one does
+    /// not, so switching between two relays does not leave the first relay's model
+    /// aliases pointing at a model the second relay has never heard of.
     static func save(
         to url: URL,
         baseURL: String,
         model: String,
         apiKey: String?,
-        keepExistingKeyIfEmpty: Bool
+        keepExistingKeyIfEmpty: Bool,
+        extraEnv: [String: String] = [:],
+        removingKeys: Set<String> = []
     ) throws {
         var root = (try? readObject(from: url)) ?? [:]
         var env = stringEnv(root)
@@ -65,9 +94,16 @@ enum ClaudeLiveSettingsStore {
             env.removeValue(forKey: Self.model)
         } else {
             env[Self.model] = trimmedModel
-            for key in familyModels where env[key] != nil {
-                env[key] = trimmedModel
-            }
+        }
+
+        for key in removingKeys where extraEnv[key] == nil {
+            env.removeValue(forKey: key)
+        }
+        for key in Self.perProviderKeys {
+            guard let value = extraEnv[key] else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { env.removeValue(forKey: key) }
+            else { env[key] = trimmed }
         }
 
         if !trimmedKey.isEmpty {

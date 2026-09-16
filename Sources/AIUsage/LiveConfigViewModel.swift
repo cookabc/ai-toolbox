@@ -14,6 +14,11 @@ final class LiveConfigViewModel: ObservableObject {
         var isError: Bool
     }
 
+    enum ProbeState: Equatable {
+        case running
+        case done(EndpointProbeResult)
+    }
+
     @Published var app: LiveConfigApp = .claude
     @Published private(set) var providers: [StoredProvider] = []
     @Published private(set) var claudeLive = ClaudeLiveSettings(
@@ -30,11 +35,19 @@ final class LiveConfigViewModel: ObservableObject {
     @Published var draftBaseURL = ""
     @Published var draftModel = ""
     @Published var draftAPIKey = ""
+    /// Per-provider `settings.json` keys, edited as raw strings. Empty values mean
+    /// "this provider does not own this key", which is what lets a switch hand the
+    /// key back instead of leaving another provider's value behind.
+    @Published var draftExtraEnv: [String: String] = [:]
     @Published var revealDraftKey = false
     @Published var isBusy = false
 
     /// Kept per tool so a Codex result never shows up under Claude Code.
     @Published private(set) var messages: [LiveConfigApp: Message] = [:]
+
+    /// Probe results keyed by provider id. Kept out of `messages` on purpose: a
+    /// slow endpoint must not look like a failed edit.
+    @Published private(set) var probeStates: [UUID: ProbeState] = [:]
 
     private let paths: LiveConfigPaths
     private let library: ProviderLibraryStore
@@ -160,6 +173,7 @@ final class LiveConfigViewModel: ObservableObject {
         draftBaseURL = ""
         draftModel = ""
         draftAPIKey = ""
+        draftExtraEnv = [:]
         revealDraftKey = false
         messages[app] = nil
     }
@@ -171,13 +185,30 @@ final class LiveConfigViewModel: ObservableObject {
         draftBaseURL = provider.baseURL
         draftModel = provider.model
         draftAPIKey = ""
+        draftExtraEnv = provider.extraEnv
         revealDraftKey = false
         messages[app] = nil
+    }
+
+    /// Fills every Claude Code model alias with the provider's own model. This is
+    /// the useful half of the old broadcast behaviour, but visible and opt-in: a
+    /// relay that serves one model for every alias can say so explicitly.
+    func fillFamilyModelsWithProviderModel() {
+        let model = draftModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else { return }
+        for key in ClaudeLiveSettingsStore.familyModels {
+            draftExtraEnv[key] = model
+        }
+    }
+
+    func clearDraftExtraEnv() {
+        draftExtraEnv = [:]
     }
 
     func cancelDraft() {
         draftMode = .none
         draftAPIKey = ""
+        draftExtraEnv = [:]
     }
 
     /// Saves the draft into the library. `activate` also writes the live config.
@@ -208,6 +239,15 @@ final class LiveConfigViewModel: ObservableObject {
             }
 
             let key = draftAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedModel = draftModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Only Claude Code has these keys. Blank fields are dropped, so clearing
+            // one means "hand it back" rather than "write an empty value".
+            let extraEnv: [String: String] = target == .claude
+                ? draftExtraEnv.compactMapValues { value in
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : trimmed
+                }
+                : [:]
             let saved: StoredProvider
             switch draftMode {
             case .edit(let id):
@@ -215,17 +255,22 @@ final class LiveConfigViewModel: ObservableObject {
                 updated[index].name = name
                 updated[index].slug = slug
                 updated[index].baseURL = baseURL
-                updated[index].model = draftModel.trimmingCharacters(in: .whitespacesAndNewlines)
+                updated[index].model = trimmedModel
+                updated[index].extraEnv = extraEnv
                 if !key.isEmpty { updated[index].apiKey = key }
                 saved = updated[index]
+                // The endpoint or model may have changed, so any earlier result no
+                // longer describes this provider.
+                probeStates.removeValue(forKey: id)
             case .create:
                 saved = StoredProvider(
                     app: target,
                     name: name,
                     slug: slug,
                     baseURL: baseURL,
-                    model: draftModel.trimmingCharacters(in: .whitespacesAndNewlines),
-                    apiKey: key
+                    model: trimmedModel,
+                    apiKey: key,
+                    extraEnv: extraEnv
                 )
                 updated.append(saved)
             case .none:
@@ -236,6 +281,7 @@ final class LiveConfigViewModel: ObservableObject {
             providers = updated
             draftMode = .none
             draftAPIKey = ""
+            draftExtraEnv = [:]
 
             if activate {
                 try apply(saved)
@@ -259,6 +305,7 @@ final class LiveConfigViewModel: ObservableObject {
             let updated = providers.filter { $0.id != provider.id }
             try library.save(updated)
             providers = updated
+            probeStates.removeValue(forKey: provider.id)
             if provider.app == .codex, hasCodexFile {
                 let next = try CodexTomlEditor.removeProvider(codexText, id: provider.slug)
                 try CodexLiveSettingsStore.write(next, to: paths.codexConfig)
@@ -286,7 +333,11 @@ final class LiveConfigViewModel: ObservableObject {
                     slug: ProviderSlug.suggest(from: name, existing: existing),
                     baseURL: claudeLive.baseURL,
                     model: claudeLive.model,
-                    apiKey: claudeSecret
+                    apiKey: claudeSecret,
+                    // Captures the model aliases and other per-provider keys that are
+                    // in settings.json right now, so importing a working setup keeps
+                    // it working instead of dropping half of it.
+                    extraEnv: claudeLive.extraEnv
                 ))
                 imported = 1
             case .codex:
@@ -315,6 +366,35 @@ final class LiveConfigViewModel: ObservableObject {
             try ClaudeLiveSettingsStore.clearAPIOverlay(at: paths.claudeSettings)
             setStatus("已清除 Claude Code 的 API 覆盖项", for: .claude)
             reload()
+        }
+    }
+
+    // MARK: - Probing
+
+    func probeState(for provider: StoredProvider) -> ProbeState? {
+        probeStates[provider.id]
+    }
+
+    func isProbing(_ provider: StoredProvider) -> Bool {
+        probeStates[provider.id] == .running
+    }
+
+    func probeResult(for provider: StoredProvider) -> EndpointProbeResult? {
+        guard let state = probeStates[provider.id] else { return nil }
+        if case .done(let result) = state { return result }
+        return nil
+    }
+
+    /// Reachability check for one provider.
+    ///
+    /// Intentionally does not touch `isBusy`: probing is read-only, so the panel
+    /// stays usable while a slow endpoint is being tried.
+    func test(_ provider: StoredProvider) {
+        guard probeStates[provider.id] != .running else { return }
+        probeStates[provider.id] = .running
+        Task {
+            let result = await EndpointProbe.probe(provider)
+            probeStates[provider.id] = .done(result)
         }
     }
 
@@ -347,7 +427,9 @@ final class LiveConfigViewModel: ObservableObject {
                 baseURL: provider.baseURL,
                 model: provider.model,
                 apiKey: provider.apiKey.isEmpty ? nil : provider.apiKey,
-                keepExistingKeyIfEmpty: true
+                keepExistingKeyIfEmpty: true,
+                extraEnv: provider.extraEnv,
+                removingKeys: claudeRemovingKeys(for: provider)
             )
         case .codex:
             guard hasCodexFile else { throw LiveConfigError.missingFile(paths.codexConfig) }
@@ -368,6 +450,7 @@ final class LiveConfigViewModel: ObservableObject {
         let paths = self.paths
         let codexSnapshot = codexText
         let hasFile = hasCodexFile
+        let removingKeys = claudeRemovingKeys(for: provider)
         try await Task.detached(priority: .userInitiated) {
             switch provider.app {
             case .claude:
@@ -376,7 +459,9 @@ final class LiveConfigViewModel: ObservableObject {
                     baseURL: provider.baseURL,
                     model: provider.model,
                     apiKey: provider.apiKey.isEmpty ? nil : provider.apiKey,
-                    keepExistingKeyIfEmpty: true
+                    keepExistingKeyIfEmpty: true,
+                    extraEnv: provider.extraEnv,
+                    removingKeys: removingKeys
                 )
             case .codex:
                 guard hasFile else { throw LiveConfigError.missingFile(paths.codexConfig) }
@@ -420,6 +505,19 @@ final class LiveConfigViewModel: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// Keys some *other* Claude provider owns and this one does not. Passing these
+    /// to the write path is what stops one relay's model aliases from lingering
+    /// after a switch to a different relay. Keys no provider claims are never in
+    /// this set, so a hand-written setting is always left alone.
+    private func claudeRemovingKeys(for provider: StoredProvider) -> Set<String> {
+        var keys = Set<String>()
+        for other in providers where other.app == .claude && other.id != provider.id {
+            keys.formUnion(other.extraEnv.keys)
+        }
+        keys.subtract(provider.extraEnv.keys)
+        return keys
+    }
 
     private var editingID: UUID? {
         if case .edit(let id) = draftMode { return id }
@@ -524,6 +622,15 @@ extension LiveConfigViewModel {
                 maskedAPIKey: SecretDisplay.mask(claude.apiKey)
             )
             claudeSecret = claude.apiKey
+        }
+        // One seeded probe result so the rendered panel shows the reachability badge.
+        if let sample = providers.first(where: { $0.app == app }) {
+            probeStates[sample.id] = .done(EndpointProbeResult(
+                verdict: .healthy,
+                status: 200,
+                latency: 0.34,
+                detail: "端点可达，路由与凭据都正常。"
+            ))
         }
     }
 }

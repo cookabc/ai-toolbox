@@ -21,11 +21,54 @@ Codex 与 Claude Code 的输入和缓存按来源字段分别显示，不推算�
 
 | 工具 | 当前生效文件 | 写入范围 |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` | `env` 中的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL`、`ANTHROPIC_API_KEY`；保存模型时若已有 `ANTHROPIC_DEFAULT_*` / `CLAUDE_CODE_SUBAGENT_MODEL` 则一并更新。清除覆盖项会删除上述 Key，其余 env 保留 |
+| Claude Code | `~/.claude/settings.json` | `env` 中的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL`、`ANTHROPIC_API_KEY`，以及该供应商在「高级配置」中声明接管的 Key。列表以外的 env 项一律原样保留。清除覆盖项会删除基础 Key 与 `ANTHROPIC_DEFAULT_*` / `CLAUDE_CODE_SUBAGENT_MODEL`，其余 env 保留 |
 | Codex | `~/.codex/config.toml` | 根级 `model`、`model_provider`，以及 `[model_providers.<id>]` 的 `name` / `base_url` / `wire_api` / `experimental_bearer_token`。其它段落原样保留。内置 `openai` 只能切换，不能删除 |
 
 自定义 Codex 供应商 ID 在库内自动生成，不在列表卡片中展示。不能使用保留 ID：`openai`、`ollama`、`lmstudio`。Key 写入 `experimental_bearer_token`；不会改 `auth.json`。每次成功写入会在同路径覆盖 `.ai-toolbox.bak`。
 
 写入 Claude Code 时，`ANTHROPIC_BASE_URL` 会去掉供应商 URL 末尾的 `/v1`（连同末尾斜杠）。Claude Code 会自行在 Base URL 后拼接 `/v1/messages`，若保留 `/v1` 就会请求到 `/v1/v1/messages` 并返回 404，而 Claude Code 把这个错误报告成「模型可能不存在或无权访问」，容易误判成模型问题。供应商库中仍按原样保存 URL，因为 Codex 需要 `/v1`。
 
+### 每个供应商的完整配置
+
+每个供应商可以额外声明自己接管的 env Key（编辑供应商 → 「高级配置」），可选范围为：
+
+```
+ANTHROPIC_DEFAULT_OPUS_MODEL      ANTHROPIC_DEFAULT_SONNET_MODEL
+ANTHROPIC_DEFAULT_HAIKU_MODEL     ANTHROPIC_DEFAULT_FABLE_MODEL
+CLAUDE_CODE_SUBAGENT_MODEL        CLAUDE_CODE_MAX_CONTEXT_TOKENS
+CLAUDE_CODE_AUTO_COMPACT_WINDOW   CLAUDE_CODE_EFFORT_LEVEL
+```
+
+规则：
+
+- 切换供应商时，只写入该供应商声明接管的 Key。**不再**把供应商的单个模型广播到已有的 `ANTHROPIC_DEFAULT_*` / `CLAUDE_CODE_SUBAGENT_MODEL` 上——旧行为会静默覆盖用户自己设定的值，且被覆盖的原值无处可查。
+- 留空表示不接管。若某个 Key 被 A 供应商声明、B 供应商未声明，切到 B 时会删除该 Key，避免 A 的模型名残留在 B 上。
+- 名单以外的 env 项，以及没有任何供应商声明的 Key，任何情况下都不会被改写或删除。
+- 只服务单一模型的中转站，可以用「模型别名 = 上方模型」一键把 5 个模型别名都指向该供应商的模型；这是旧广播行为的显式版本。
+- 「导入当前配置」会把 `settings.json` 中现有的上述 Key 一并记录到新供应商里，因此导入一份可用配置不会丢掉一半设置。
+
 切回内置 `openai` 时（点击「官方 OpenAI」，或删除当前生效的供应商），根级 `model` 会一并清除，让 Codex 使用自身默认模型。内置供应商使用 ChatGPT 账号登录，只接受 OpenAI 的模型 ID，若保留中转供应商的模型，每次请求都会返回 400。
+
+### 端点测试
+
+供应商卡片上的闪电按钮会向该供应商实际生效的地址发一次请求，显示真实 HTTP 状态与耗时。
+
+| 工具 | 请求地址 | 依据 |
+| --- | --- | --- |
+| Claude Code | Base URL 去掉 `/v1` 后 + `/v1/messages` | 与 Claude Code 自身的拼接规则一致 |
+| Codex | Base URL + `/responses` | 与写入的 `wire_api = "responses"` 一致 |
+
+请求体只索取 1 个 token，足以确认路由与凭据，费用可忽略。判定口径：
+
+| 状态 | 含义 |
+| --- | --- |
+| 2xx | 端点可达，路由与凭据正常 |
+| 401 / 403 | 路由存在，API Key 不对 |
+| 404 | 路由不存在。Claude Code 会把这个 404 报成「模型不可用」，容易误判 |
+| 405 / 501 | 网关不支持该协议，这个供应商无法用于该工具 |
+| 其它 4xx / 5xx | 网关拒绝；界面会附带服务端返回的错误信息 |
+| 连接失败 | 区分超时、DNS、端口、明文 HTTP 被系统策略阻止、TLS 失败 |
+
+测试不写入任何配置文件，也不复用用量读取的缓存，只发一次真实网络请求。
+
+中转供应商常是局域网或内网明文 HTTP 地址，因此 `Info.plist` 中开启了 `NSAppTransportSecurity` → `NSAllowsArbitraryLoads`。仅设置 `NSAllowsLocalNetworking` 不够：它只覆盖 `.local` 名称与链路本地地址，不覆盖 `192.168.x.x` / `10.x.x.x`。这是为端点测试做的取舍；若只使用 HTTPS 供应商，可以移除该键。

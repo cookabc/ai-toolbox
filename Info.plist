@@ -26,5 +26,15 @@
   <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <!-- Saved providers are often plain-HTTP relays on a LAN or an internal
+       hostname. App Transport Security would refuse those before the request
+       left the machine, and the probe would report an ATS error instead of the
+       gateway's real status. NSAllowsLocalNetworking is not enough here: it
+       covers .local names and link-local addresses, not 192.168/10.x hosts. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+  </dict>
 </dict>
 </plist>

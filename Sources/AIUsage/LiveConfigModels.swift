@@ -17,6 +17,23 @@ struct ClaudeLiveSettings: Equatable, Sendable {
     var model: String
     var hasAPIKey: Bool
     var maskedAPIKey: String
+    /// Values currently set in `settings.json` for the keys a provider is allowed
+    /// to own. Read back so "导入当前配置" can capture a working setup in full.
+    var extraEnv: [String: String]
+
+    init(
+        baseURL: String,
+        model: String,
+        hasAPIKey: Bool,
+        maskedAPIKey: String,
+        extraEnv: [String: String] = [:]
+    ) {
+        self.baseURL = baseURL
+        self.model = model
+        self.hasAPIKey = hasAPIKey
+        self.maskedAPIKey = maskedAPIKey
+        self.extraEnv = extraEnv
+    }
 }
 
 struct CodexProviderRecord: Equatable, Identifiable, Sendable {

@@ -128,6 +128,7 @@ struct LiveConfigView: View {
                     }
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.tertiary)
+                    probeResult(for: provider)
                 }
                 Spacer(minLength: 4)
                 VStack(spacing: 4) {
@@ -135,7 +136,8 @@ struct LiveConfigView: View {
                         model.activate(provider)
                     }
                     .disabled(model.isBusy)
-                    HStack(spacing: 8) {
+                    HStack(spacing: 4) {
+                        probeButton(for: provider)
                         cardIconButton(systemName: "pencil", help: "编辑") {
                             model.beginEdit(provider)
                         }
@@ -143,7 +145,7 @@ struct LiveConfigView: View {
                             pendingDelete = provider
                         }
                     }
-                    .frame(width: 76, alignment: .center)
+                    .frame(width: 80, alignment: .center)
                 }
             }
         }
@@ -166,6 +168,50 @@ struct LiveConfigView: View {
         .disabled(model.isBusy)
         .help(help)
         .accessibilityLabel(help)
+    }
+
+    @ViewBuilder
+    private func probeButton(for provider: StoredProvider) -> some View {
+        if model.isProbing(provider) {
+            ProgressView()
+                .controlSize(.mini)
+                .frame(width: 24, height: 20)
+        } else {
+            cardIconButton(systemName: "bolt.circle", help: "测试端点") {
+                model.test(provider)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func probeResult(for provider: StoredProvider) -> some View {
+        if let result = model.probeResult(for: provider) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Image(systemName: result.symbolName)
+                    Text(result.summary)
+                }
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(probeColor(result.verdict))
+                if !result.isHealthy {
+                    // The actionable half: the real status and the server's own words,
+                    // in place of the CLI's misleading "selected model" complaint.
+                    Text(result.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .help(result.detail)
+        }
+    }
+
+    private func probeColor(_ verdict: EndpointProbeResult.Verdict) -> Color {
+        switch verdict {
+        case .healthy: .green
+        case .needsAuth, .rejected: .orange
+        case .badRoute, .unsupported, .unreachable: .red
+        }
     }
 
     private var draftForm: some View {
@@ -201,6 +247,7 @@ struct LiveConfigView: View {
                         .help(model.revealDraftKey ? "隐藏 Key" : "显示已输入内容")
                     }
                 }
+                if model.app == .claude { perProviderEnvSection }
                 HStack {
                     Button { model.saveDraft(activate: false) } label: {
                         Label("保存", systemImage: "square.and.arrow.down")
@@ -222,12 +269,63 @@ struct LiveConfigView: View {
         }
     }
 
-    private func labeledField(_ title: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    /// Per-provider `settings.json` keys. Collapsed by default: most providers only
+    /// need the base URL, model and key above.
+    private var perProviderEnvSection: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("留空表示这个供应商不接管该 Key，切换时会交还给声明它的供应商。列表以外的 env 项始终原样保留。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(ClaudeLiveSettingsStore.perProviderKeys, id: \.self) { key in
+                    labeledField(key, text: extraEnvBinding(key), placeholder: "未接管", monospaced: true)
+                }
+                HStack(spacing: 8) {
+                    Button {
+                        model.fillFamilyModelsWithProviderModel()
+                    } label: {
+                        Label("模型别名 = 上方模型", systemImage: "wand.and.stars")
+                    }
+                    .help("把上面填写的模型写入全部 Claude Code 模型别名。只服务单一模型的中转站通常需要这样设置。")
+                    Button("全部清空") { model.clearDraftExtraEnv() }
+                    Spacer()
+                }
+                .font(.caption2)
+                .buttonStyle(.borderless)
+                .disabled(model.isBusy)
+            }
+            .padding(.top, 6)
+        } label: {
+            Text("高级配置（Claude Code 环境变量）")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .font(.caption)
+    }
+
+    private func extraEnvBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { model.draftExtraEnv[key] ?? "" },
+            set: { model.draftExtraEnv[key] = $0 }
+        )
+    }
+
+    /// `placeholder` defaults to the title, which reads well for short labels like
+    /// "名称". The env-key fields pass their own, otherwise the key name appears
+    /// twice — once as the label and again as the placeholder.
+    private func labeledField(
+        _ title: String,
+        text: Binding<String>,
+        placeholder: String? = nil,
+        monospaced: Bool = false
+    ) -> some View {
+        let fieldFont: Font = monospaced ? .system(.caption, design: .monospaced) : .caption
+        return VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption).foregroundStyle(.secondary)
-            TextField(title, text: text)
+            TextField(placeholder ?? title, text: text)
                 .textFieldStyle(.roundedBorder)
-                .font(.caption)
+                .font(fieldFont)
         }
     }
 }
