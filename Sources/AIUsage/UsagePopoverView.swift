@@ -718,19 +718,32 @@ private struct HeaderIconButton: View {
     }
 }
 
+/// The refresh icon while a reload is in flight.
+///
+/// The angle comes from the timeline rather than from a
+/// `withAnimation(…repeatForever(autoreverses: false))` started in `onAppear`. An endless
+/// animation never completes, so it is still in flight when the next layout pass
+/// repositions the views around it: the panel's own title and tool-tab labels are
+/// re-laid-out in that same transaction, inherit the endless animation, and then slide
+/// forever — a drift that survives closing and reopening the panel and only goes away
+/// when the app is relaunched. A timeline has no animation for anything to inherit: the
+/// angle is a pure function of the date.
 private struct SpinningSymbol: View {
     let systemName: String
-    @State private var rotation: Double = 0
+
+    private static let period: TimeInterval = 0.8
 
     var body: some View {
-        Image(systemName: systemName)
-            .rotationEffect(.degrees(rotation))
-            .onAppear {
-                rotation = 0
-                withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
-                    rotation = 360
-                }
-            }
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            Image(systemName: systemName)
+                .rotationEffect(.degrees(Self.angle(at: context.date)))
+        }
+    }
+
+    private static func angle(at date: Date) -> Double {
+        let phase = date.timeIntervalSinceReferenceDate
+            .truncatingRemainder(dividingBy: period)
+        return phase / period * 360
     }
 }
 

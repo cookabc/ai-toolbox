@@ -242,6 +242,74 @@ final class PanelLayoutTests: XCTestCase {
         XCTAssertEqual(NSHostingView(rootView: view).fittingSize.width, UsagePopoverView.panelWidth)
     }
 
+    /// Regression for the panel sliding while a refresh was in flight.
+    ///
+    /// The header spinner used to rotate via
+    /// `withAnimation(…repeatForever(autoreverses: false))` started in `onAppear`. An
+    /// endless animation never completes, so it was still in flight when the refresh
+    /// inserted the "· 正在刷新…" subtitle and re-laid-out the chrome around it — and
+    /// those views inherited it and slid upward forever. It survived closing and
+    /// reopening the panel and cleared only on relaunch, which is what identified it.
+    /// Measured before the fix: **26** layers moving, the title and both tool tabs among
+    /// them. The angle now comes from a `TimelineView`, so only the spinner may move.
+    ///
+    /// Usage mode is the case that matters: starting a refresh inserts the subtitle *and*
+    /// the spinner in the same update. Config mode never re-lays-out the chrome, so it
+    /// does not reach the bug.
+    func testRefreshSpinnerDoesNotMoveThePanel() throws {
+        UserDefaults.standard.set(LiveConfigApp.codex.rawValue, forKey: "selectedTool")
+        let model = UsageViewModel(
+            providers: [SlowFixtureProvider(id: .codex, delay: 6)],
+            preferences: nil,
+            now: { [instant] in instant }
+        )
+        let host = NSHostingView(rootView: UsagePopoverView(
+            model: model, initialSelectedTool: .codex, initialShowsConfig: false
+        ))
+        host.appearance = NSAppearance(named: .aqua)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: UsagePopoverView.panelWidth, height: 602),
+            styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+
+        pump(host, for: 0.6)
+        XCTAssertTrue(model.isRefreshing == false, "the fixture must start idle")
+
+        // The spinner and the subtitle appear together, which is the trigger.
+        model.refresh()
+        XCTAssertTrue(model.isRefreshing, "the slow fixture must still be refreshing")
+
+        // Let the one-off re-layout settle; after this, anything still moving is a
+        // leaked animation rather than layout catching up.
+        pump(host, for: 0.9)
+        let heightBefore = window.frame.height
+
+        var previous = structuralGeometry(host)
+        var offenders: [String: String] = [:]
+        for _ in 0..<15 {
+            pump(host, for: 0.1)
+            let current = structuralGeometry(host)
+            for (path, value) in current where previous[path] != nil && previous[path] != value {
+                offenders[path] = "was \(previous[path]!)\n     now \(value)"
+            }
+            previous = current
+        }
+
+        XCTAssertTrue(
+            offenders.isEmpty,
+            "the panel moved while the refresh spinner was running (the spinner itself is "
+            + "excluded — it is under \(Int(Self.structuralWidth))pt wide): \(offenders)"
+        )
+        XCTAssertEqual(
+            window.frame.height, heightBefore, accuracy: 0.5,
+            "the panel resized while the refresh spinner was running"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Measured chrome height, matching the constant the panel derives its cap from.
@@ -381,6 +449,44 @@ final class PanelLayoutTests: XCTestCase {
         return found
     }
 
+    /// Layers at least this wide are structure — the content, the chrome, the rows. The
+    /// spinner glyph is ~18pt, so excluding narrow layers is what lets the test say
+    /// "nothing but the spinner moved" without having to identify the spinner itself.
+    private static let structuralWidth: CGFloat = 100
+
+    private func pump(_ host: NSView, for seconds: Double) {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            host.layoutSubtreeIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+    }
+
+    /// Frame, position and transform of every structural layer, keyed by its path in the
+    /// layer tree. `cacheDisplay` cannot see an in-flight animation — it renders model
+    /// values — so the tree is compared between samples instead of being screenshotted.
+    private func structuralGeometry(_ view: NSView) -> [String: String] {
+        var out: [String: String] = [:]
+        collect(view.layer, path: "", into: &out)
+        return out
+    }
+
+    private func collect(_ layer: CALayer?, path: String, into out: inout [String: String]) {
+        guard let layer else { return }
+        let name = "\(path)/\(String(describing: type(of: layer)))"
+        if layer.frame.width >= Self.structuralWidth {
+            let t = layer.transform
+            out[name] = String(
+                format: "frame=%.2f,%.2f %.2fx%.2f pos=%.2f,%.2f t=[%.3f %.3f %.3f %.3f %.3f %.3f]",
+                layer.frame.origin.x, layer.frame.origin.y, layer.frame.width, layer.frame.height,
+                layer.position.x, layer.position.y, t.m11, t.m12, t.m21, t.m22, t.m41, t.m42
+            )
+        }
+        for (index, sub) in (layer.sublayers ?? []).enumerated() {
+            collect(sub, path: "\(name)#\(index)", into: &out)
+        }
+    }
+
     private func snapshot(output: Int64, models: Int) -> UsageSnapshot {
         let totals = UsageTotals(
             turns: 24, requests: 128, inputTokens: 3_700_000, outputTokens: output,
@@ -400,5 +506,23 @@ private struct FixtureProvider: UsageProvider {
     func load() throws -> UsageSnapshot {
         guard let snapshot else { throw ProviderReadError.noRecords(id) }
         return snapshot
+    }
+}
+
+/// A provider that stays in flight long enough to watch the panel while the header
+/// spinner is running. `load()` is synchronous and `UsageViewModel` runs it on a detached
+/// task, so the sleep parks that task instead of the main actor — the panel keeps
+/// laying out and animating while the refresh is still pending.
+private struct SlowFixtureProvider: UsageProvider {
+    let id: UsageProviderID
+    let delay: TimeInterval
+
+    func load() throws -> UsageSnapshot {
+        Thread.sleep(forTimeInterval: delay)
+        let totals = UsageTotals(
+            turns: 1, requests: 1, inputTokens: 1, outputTokens: 1, reasoningTokens: 0,
+            cacheReadInputTokens: 0, cacheCreationInputTokens: 0, toolCalls: 0
+        )
+        return UsageSnapshot(refreshedAt: Date(), totals: totals, today: totals, models: [])
     }
 }
