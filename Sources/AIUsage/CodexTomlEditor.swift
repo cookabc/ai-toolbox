@@ -1,6 +1,9 @@
 import Foundation
 
 enum CodexTomlEditor {
+    /// Root key Codex reads the model picker's catalog from.
+    static let modelCatalogKey = "model_catalog_json"
+
     static let builtInOpenAI = CodexProviderRecord(
         id: "openai",
         name: "官方 OpenAI",
@@ -55,7 +58,8 @@ enum CodexTomlEditor {
         baseURL: String,
         apiKey: String?,
         makeCurrent: Bool,
-        model: String?
+        model: String?,
+        modelCatalog: String? = nil
     ) throws -> String {
         guard ProviderIDRules.isValid(id) else { throw LiveConfigError.invalidProviderID }
         guard !ProviderIDRules.reservedCodexIDs.contains(id) else { throw LiveConfigError.reservedProviderID }
@@ -77,6 +81,9 @@ enum CodexTomlEditor {
         var next = upsertTable(text, id: id, fields: fields)
         if makeCurrent {
             next = switchProvider(next, to: id, model: model)
+            // Only the provider that is becoming current publishes its model, so the
+            // catalog always describes what `model_provider` points at.
+            next = setModelCatalog(next, path: modelCatalog)
         } else if let model, !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             next = setRootString(next, key: "model", value: model.trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -148,12 +155,32 @@ enum CodexTomlEditor {
         return join(result, originally: text)
     }
 
+    /// Points `model_catalog_json` at the catalog AI 工具台 publishes, or gives the
+    /// key back to Codex when the active provider does not need one: without the
+    /// key Codex lists its own models, which is what the official login wants.
+    ///
+    /// Clearing only removes a value that names our own file. A catalog somebody
+    /// configured by hand is left alone, because nothing here knows how to restore
+    /// it once a switch has thrown it away.
+    static func setModelCatalog(_ text: String, path: String?) -> String {
+        guard let path else {
+            guard let current = rootString(text, key: modelCatalogKey),
+                  URL(fileURLWithPath: current).lastPathComponent == CodexModelCatalog.fileName
+            else { return text }
+            return removeRootString(text, key: modelCatalogKey)
+        }
+        return setRootString(text, key: modelCatalogKey, value: path)
+    }
+
     /// The built-in provider signs in with the ChatGPT account and only accepts
     /// OpenAI model IDs. Leaving a relay's `model` in place makes every request
     /// fail with "The '<model>' model is not supported when using Codex with a
     /// ChatGPT account", so drop the override and let Codex pick its own default.
     static func switchToBuiltInOpenAI(_ text: String) -> String {
-        removeRootString(setRootString(text, key: "model_provider", value: "openai"), key: "model")
+        let official = removeRootString(setRootString(text, key: "model_provider", value: "openai"), key: "model")
+        // The published catalog only holds the relay's model and hides the official
+        // ones, so it has to go with the relay.
+        return setModelCatalog(official, path: nil)
     }
 
     static func providerIDs(in text: String) -> [String] {
