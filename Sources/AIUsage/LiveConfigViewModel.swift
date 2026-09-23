@@ -284,8 +284,8 @@ final class LiveConfigViewModel: ObservableObject {
             draftExtraEnv = [:]
 
             if activate {
-                try apply(saved)
-                setStatus("已保存并切换到 \(saved.name)", for: target)
+                let note = try apply(saved)
+                setStatus(status("已保存并切换到 \(saved.name)", note: note), for: target)
             } else {
                 setStatus("已保存 \(saved.name)，未改变当前生效配置", for: target)
             }
@@ -296,7 +296,8 @@ final class LiveConfigViewModel: ObservableObject {
     func activate(_ provider: StoredProvider) {
         applyOptimistic(provider)
         runAsync(provider.app) {
-            try await self.writeActivate(provider)
+            let note = try await self.writeActivate(provider)
+            self.setStatus(self.status("已切换到 \(provider.name)", note: note), for: provider.app)
         }
     }
 
@@ -309,6 +310,13 @@ final class LiveConfigViewModel: ObservableObject {
             if provider.app == .codex, hasCodexFile {
                 let next = try CodexTomlEditor.removeProvider(codexText, id: provider.slug)
                 try CodexLiveSettingsStore.write(next, to: paths.codexConfig)
+                // Deleting the current provider falls back to the official login,
+                // which no longer needs the catalog we published for it. Removed only
+                // after the config write succeeded: a failed write would otherwise
+                // leave config.toml pointing at a file that is already gone.
+                if CodexTomlEditor.rootString(next, key: CodexTomlEditor.modelCatalogKey) == nil {
+                    removePublishedModelCatalog(paths: paths)
+                }
             }
             if case .edit(let editing) = draftMode, editing == provider.id { draftMode = .none }
             setStatus("已删除 \(provider.name)", for: provider.app)
@@ -419,7 +427,9 @@ final class LiveConfigViewModel: ObservableObject {
         }
     }
 
-    private func apply(_ provider: StoredProvider) throws {
+    /// Returns the sentence to append to the status line when the Codex model
+    /// catalog could not be published.
+    private func apply(_ provider: StoredProvider) throws -> String? {
         switch provider.app {
         case .claude:
             try ClaudeLiveSettingsStore.save(
@@ -431,8 +441,14 @@ final class LiveConfigViewModel: ObservableObject {
                 extraEnv: provider.extraEnv,
                 removingKeys: claudeRemovingKeys(for: provider)
             )
+            return nil
         case .codex:
             guard hasCodexFile else { throw LiveConfigError.missingFile(paths.codexConfig) }
+            let publication = publishModelCatalog(
+                paths: paths,
+                name: provider.name,
+                model: provider.model
+            )
             let next = try CodexTomlEditor.upsertProvider(
                 codexText,
                 id: provider.slug,
@@ -440,18 +456,21 @@ final class LiveConfigViewModel: ObservableObject {
                 baseURL: provider.baseURL,
                 apiKey: provider.apiKey.isEmpty ? nil : provider.apiKey,
                 makeCurrent: true,
-                model: provider.model
+                model: provider.model,
+                modelCatalog: publication.path
             )
             try CodexLiveSettingsStore.write(next, to: paths.codexConfig)
+            if publication.path == nil { removePublishedModelCatalog(paths: paths) }
+            return publication.note
         }
     }
 
-    private func writeActivate(_ provider: StoredProvider) async throws {
+    private func writeActivate(_ provider: StoredProvider) async throws -> String? {
         let paths = self.paths
         let codexSnapshot = codexText
         let hasFile = hasCodexFile
         let removingKeys = claudeRemovingKeys(for: provider)
-        try await Task.detached(priority: .userInitiated) {
+        return try await Task.detached(priority: .userInitiated) {
             switch provider.app {
             case .claude:
                 try ClaudeLiveSettingsStore.save(
@@ -463,8 +482,14 @@ final class LiveConfigViewModel: ObservableObject {
                     extraEnv: provider.extraEnv,
                     removingKeys: removingKeys
                 )
+                return nil
             case .codex:
                 guard hasFile else { throw LiveConfigError.missingFile(paths.codexConfig) }
+                let publication = publishModelCatalog(
+                    paths: paths,
+                    name: provider.name,
+                    model: provider.model
+                )
                 let next = try CodexTomlEditor.upsertProvider(
                     codexSnapshot,
                     id: provider.slug,
@@ -472,9 +497,12 @@ final class LiveConfigViewModel: ObservableObject {
                     baseURL: provider.baseURL,
                     apiKey: provider.apiKey.isEmpty ? nil : provider.apiKey,
                     makeCurrent: true,
-                    model: provider.model
+                    model: provider.model,
+                    modelCatalog: publication.path
                 )
                 try CodexLiveSettingsStore.write(next, to: paths.codexConfig)
+                if publication.path == nil { removePublishedModelCatalog(paths: paths) }
+                return publication.note
             }
         }.value
     }
@@ -487,6 +515,7 @@ final class LiveConfigViewModel: ObservableObject {
             guard hasFile else { throw LiveConfigError.missingFile(paths.codexConfig) }
             let next = CodexTomlEditor.switchToBuiltInOpenAI(codexSnapshot)
             try CodexLiveSettingsStore.write(next, to: paths.codexConfig)
+            removePublishedModelCatalog(paths: paths)
         }.value
     }
 
@@ -548,6 +577,13 @@ final class LiveConfigViewModel: ObservableObject {
                 reload()
             }
         }
+    }
+
+    /// A status line plus the caveat a failed catalog publication has to carry: the
+    /// switch worked, but Codex will not offer the model until it can be published.
+    private func status(_ text: String, note: String?) -> String {
+        guard let note else { return text }
+        return "\(text)；\(note)"
     }
 
     private func setStatus(_ text: String, for target: LiveConfigApp) {
@@ -633,4 +669,50 @@ extension LiveConfigViewModel {
             ))
         }
     }
+}
+
+/// The outcome of publishing one provider's model to Codex's catalog: the path to
+/// point `model_catalog_json` at, and the sentence to show when it could not be
+/// published. Publishing is best effort — the switch itself has already succeeded
+/// by then, so a missing catalog costs the picker entry, not the provider.
+private struct CatalogPublication {
+    var path: String?
+    var note: String?
+}
+
+/// Writes the catalog file for the provider that is becoming current.
+///
+/// The official entries are borrowed from the catalog Codex downloaded for itself,
+/// which is why this reads `models_cache.json` rather than shipping a prompt of its
+/// own. A provider without a model, or one whose catalog cannot be built, returns
+/// `path: nil`: the caller writes `config.toml` without the key and removes the
+/// published file only after that write has succeeded, so a failed write can never
+/// leave `config.toml` pointing at a file that is already gone.
+///
+/// Free-standing and non-isolated on purpose: the write runs on the same detached
+/// task as the `config.toml` write it belongs to.
+private func publishModelCatalog(paths: LiveConfigPaths, name: String, model: String) -> CatalogPublication {
+    let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        return CatalogPublication(path: nil, note: nil)
+    }
+    do {
+        let data = try CodexModelCatalog.make(
+            providerName: name,
+            model: trimmed,
+            officialCatalog: paths.codexOfficialCatalog
+        )
+        // Written first: `config.toml` only points at a catalog that already exists,
+        // so a failed write cannot leave Codex with a missing file.
+        try AtomicFileWriter.write(data, to: paths.codexModelCatalog, backup: false)
+        return CatalogPublication(path: paths.codexModelCatalog.path, note: nil)
+    } catch {
+        return CatalogPublication(path: nil, note: error.localizedDescription)
+    }
+}
+
+/// Removes the published catalog. Called whenever `model_catalog_json` stops
+/// pointing at it, so a stale file never describes the wrong provider.
+private func removePublishedModelCatalog(paths: LiveConfigPaths) {
+    try? FileManager.default.removeItem(at: paths.codexModelCatalog)
 }

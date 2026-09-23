@@ -23,6 +23,7 @@ AI 工具台是一个 macOS 菜单栏应用，集中展示 **Codex** 与 **Claud
 | 安静地后台刷新 | 每 30 秒刷新，各来源独立读取；支持刷新按钮和 `⌘R` |
 | 清楚的数据状态 | 区分加载、读取失败和部分数据，失败时保留上次成功结果 |
 | 供应商切换 | 保存供应商库、切换当前生效的 Base URL / 模型 / API Key |
+| 模型列表 | 切到自定义供应商时，把该供应商的模型发布进 Codex 的模型选择列表 |
 | 原生深浅色 | 自适应系统外观，清晰卡片、语义色与独立应用图标 |
 
 ## 界面预览
@@ -86,6 +87,8 @@ open dist/AIToolbox.app
 用量统计不上传会话内容，也不向源数据库写入业务数据。日志逐行处理，不保留会话正文或工具参数。
 
 **供应商库**保存在 `~/Library/Application Support/AIToolbox/providers.json`。配置面板会读写当前生效文件：`~/.claude/settings.json` 的 `env` 覆盖项，以及 `~/.codex/config.toml` 的 `model` / `model_provider` / `[model_providers.*]`。API Key 留在这些本机文件中，界面默认掩码；写入前会在同目录留下 `.ai-toolbox.bak`。不修改 `~/.codex/auth.json`。
+
+自定义供应商生效时，面板还会写一份 `~/.codex/ai-toolbox-models.json`，并把 `config.toml` 的 `model_catalog_json` 指向它——Codex 的模型列表只认这份目录，不写就没有该模型，还会提示缺少元数据。目录条目必须自带系统指令，因此指令逐字取自 Codex 自己下载的官方目录（`~/.codex/models_cache.json`）；官方条目在发布时被标记为不进列表，仍可按名字解析，子代理与自动审查不受影响。切回官方 OpenAI 时会同时移除该键与文件；手工设置的 `model_catalog_json` 不会被覆盖。（该行为在 Codex 0.155 上验证；更早的版本会把 `model_catalog_json` 当成未知字段并忽略。）
 
 首次读取或历史记录较多时，扫描可能需要一些时间，期间可切换到另一工具。
 
