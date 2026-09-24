@@ -17,8 +17,8 @@ for size in 16 32 128 256 512; do
     sips -z "$double_size" "$double_size" Assets/AppIcon.png --out "$package_dir/AppIcon.iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$package_dir/AppIcon.iconset" -o "$app_dir/Contents/Resources/AppIcon.icns"
-cp "$binary_dir/AIUsage" "$app_dir/Contents/MacOS/AIToolbox"
-resource_bundle="$binary_dir/AIUsage_AIUsage.bundle"
+cp "$binary_dir/AIToolbox" "$app_dir/Contents/MacOS/AIToolbox"
+resource_bundle="$binary_dir/AIToolbox_AIToolbox.bundle"
 if [[ -d "$resource_bundle" ]]; then
     # SwiftPM emits a macOS-style bundle (Contents/Resources) on current toolchains
     # and a flat one on older releases; pick whichever actually holds the icons.

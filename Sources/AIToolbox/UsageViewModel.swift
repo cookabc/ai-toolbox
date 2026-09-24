@@ -1,0 +1,168 @@
+import Foundation
+import SwiftUI
+
+typealias UsageLoader = @Sendable () throws -> UsageSnapshot
+
+@MainActor
+final class UsageViewModel: ObservableObject {
+    @Published private(set) var states: [UsageProviderID: ProviderState] = [:]
+    @Published var selectedProvider: UsageProviderID = .codex {
+        didSet { preferences?.set(selectedProvider.rawValue, forKey: Self.selectionKey) }
+    }
+    /// Reads the user is waiting for: a manual refresh, or the first read of a tool
+    /// that has nothing to show yet. Timer refreshes run silently, so the header does
+    /// not spin every 30 seconds.
+    @Published private(set) var visibleRefreshes: Set<UsageProviderID> = []
+
+    static let refreshInterval: TimeInterval = 30
+
+    private let loaders: [UsageProviderID: UsageLoader]
+    private let preferences: UserDefaults?
+    private let now: @Sendable () -> Date
+    private var refreshTimer: Timer?
+    private var generations: [UsageProviderID: Int] = [:]
+    private var lastPanelRefresh = Date.distantPast
+
+    private static let selectionKey = "selectedUsageProvider"
+
+    var snapshot: UsageSnapshot? { states[selectedProvider]?.snapshot }
+    var errorMessage: String? { states[selectedProvider]?.errorMessage }
+    var isRefreshing: Bool { visibleRefreshes.contains(selectedProvider) }
+    var sourceIDs: [UsageProviderID] {
+        UsageProviderID.allCases.filter { loaders[$0] != nil }
+    }
+
+    init(loader: @escaping UsageLoader, now: @escaping @Sendable () -> Date = { Date() }) {
+        loaders = [.codex: loader]
+        preferences = nil
+        self.now = now
+    }
+
+    init(providers: [any UsageProvider], preferences: UserDefaults? = .standard,
+         now: @escaping @Sendable () -> Date = { Date() }) {
+        loaders = Dictionary(uniqueKeysWithValues: providers.map { provider in
+            (provider.id, { try provider.load() } as UsageLoader)
+        })
+        self.preferences = preferences
+        self.now = now
+        selectedProvider = UsageProviderID(rawValue: preferences?.string(forKey: Self.selectionKey) ?? "") ?? .codex
+    }
+
+    func start() {
+        guard refreshTimer == nil else { return }
+        refreshAll()
+        let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshAll() }
+        }
+        // Lets the system batch this wakeup with others; the exact second never matters.
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    func stop() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        for id in sourceIDs {
+            generations[id, default: 0] += 1
+            states[id, default: ProviderState()].isRefreshing = false
+        }
+        visibleRefreshes = []
+    }
+
+    /// A manual refresh of the selected tool. Shows progress.
+    func refresh() {
+        refresh(selectedProvider, visible: true)
+    }
+
+    /// Opening the panel should never show numbers that are half a minute old, but
+    /// clicking the icon twice in a row should not queue two reads either.
+    func panelDidOpen() {
+        let instant = now()
+        guard instant.timeIntervalSince(lastPanelRefresh) > 5 else { return }
+        lastPanelRefresh = instant
+        refreshAll()
+    }
+
+    func refreshAll() {
+        for id in sourceIDs { refresh(id, visible: false) }
+    }
+
+    private func refresh(_ id: UsageProviderID, visible: Bool) {
+        guard let loader = loaders[id] else { return }
+        // Nothing on screen yet means the user is waiting, whatever started the read.
+        if visible || states[id]?.snapshot == nil { visibleRefreshes.insert(id) }
+        guard states[id]?.isRefreshing != true else { return }
+        states[id, default: ProviderState()].isRefreshing = true
+        generations[id, default: 0] += 1
+        let generation = generations[id, default: 0]
+        Task {
+            let result = await Task.detached(priority: .utility) {
+                Result<UsageSnapshot, Error> { try loader() }
+            }.value
+            guard generations[id] == generation else { return }
+            var state = states[id, default: ProviderState()]
+            state.isRefreshing = false
+            switch result {
+            case .success(let snapshot):
+                state.snapshot = snapshot
+                state.errorMessage = nil
+            case .failure(let error):
+                state.errorMessage = error.localizedDescription
+            }
+            states[id] = state
+            visibleRefreshes.remove(id)
+        }
+    }
+
+    // MARK: - Reading the selected tool
+
+    /// Whether the last successful read happened today. A read from yesterday knows
+    /// nothing about today, so today's figures are unknown rather than zero.
+    func isCurrent(_ id: UsageProviderID) -> Bool {
+        guard let snapshot = states[id]?.snapshot else { return false }
+        return Calendar.current.isDate(snapshot.refreshedAt, inSameDayAs: now())
+    }
+
+    func today(_ id: UsageProviderID? = nil) -> UsageTotals? {
+        let id = id ?? selectedProvider
+        guard isCurrent(id), let snapshot = states[id]?.snapshot else { return nil }
+        return snapshot.totals(on: now())
+    }
+
+    func recentDays(_ count: Int) -> [DailyUsage] {
+        snapshot?.recentDays(count, endingAt: now()) ?? []
+    }
+
+    var currentDate: Date { now() }
+
+    /// What the menu-bar item says to VoiceOver.
+    var statusText: String {
+        let title = selectedProvider.title
+        guard let today = today() else { return "\(title) 今日输出暂无" }
+        return "\(title) 今日输出 \(Format.token(today.outputTokens))"
+    }
+
+    func sourceWarning(_ id: UsageProviderID) -> String? {
+        guard let state = states[id], let snapshot = state.snapshot else { return nil }
+        if state.errorMessage != nil { return "刷新失败，显示的是上次成功读取的数据。" }
+        if !isCurrent(id) { return "今天还没有读取成功，今日数据暂缺。" }
+        let coverage = snapshot.coverage
+        if coverage.skippedRecords > 0 {
+            return "有 \(coverage.skippedRecords) 条用量记录无法解析，统计可能偏少。"
+        }
+        if coverage.undatedRecords > 0 {
+            return "有 \(coverage.undatedRecords) 条记录缺少时间，只计入累计。"
+        }
+        return nil
+    }
+
+    func reports(_ metric: UsageMetric) -> Bool {
+        snapshot?.coverage.reported.contains(metric) == true
+    }
+
+    /// A metric no record reports is unknown, which reads as "—", not "0".
+    func display(_ value: Int64, _ metric: UsageMetric) -> String {
+        reports(metric) ? Format.token(value) : "—"
+    }
+}

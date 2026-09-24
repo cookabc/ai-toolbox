@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "AIUsage",
+    name: "AIToolbox",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "AIUsage", targets: ["AIUsage"]),
+        .executable(name: "AIToolbox", targets: ["AIToolbox"]),
     ],
     targets: [
         .executableTarget(
-            name: "AIUsage",
+            name: "AIToolbox",
             resources: [.process("Resources")]
         ),
         .testTarget(
-            name: "AIUsageTests",
-            dependencies: ["AIUsage"]
+            name: "AIToolboxTests",
+            dependencies: ["AIToolbox"]
         ),
     ]
 )
