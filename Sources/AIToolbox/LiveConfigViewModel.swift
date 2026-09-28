@@ -473,7 +473,9 @@ final class LiveConfigViewModel: ObservableObject {
         _ work: @escaping @Sendable (LiveConfigStore) throws -> String?
     ) {
         guard !isFixture else { return }
-        messages[target] = nil
+        // The previous message stays put until this action replaces it. Clearing it
+        // here removed and re-added the notice row around every action, and each of
+        // those moves the content-fitted panel — the bounce seen on every switch.
         runningActions += 1
         isBusy = true
         let store = self.store
