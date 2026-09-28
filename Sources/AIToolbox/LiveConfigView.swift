@@ -25,6 +25,7 @@ struct LiveConfigView: View {
       if model.draftMode != .none { draftForm }
     }
     .padding(.horizontal, 14)
+    .padding(.top, 10)
     .padding(.bottom, 12)
     .onAppear { model.loadOnce() }
     .onChange(of: model.app) { _ in
