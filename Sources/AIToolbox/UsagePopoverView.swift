@@ -248,18 +248,23 @@ struct UsagePopoverView: View {
     showsConfig ? configModel.isBusy : model.isRefreshing
   }
 
-  @ViewBuilder
   private var headerToolbar: some View {
-    HStack(spacing: 0) {
-      if showsConfig && selectedTool == .claude {
-        HeaderIconButton(
-          systemName: "eraser",
-          help: "清除 Claude API 覆盖项",
-          disabled: configModel.isBusy
-        ) {
-          pendingClearClaude = true
-        }
+    // The eraser keeps its slot in every mode: removing it on tool or mode switches
+    // slid the other three icons sideways each time. Hidden instead of absent, so
+    // only its own visibility ever changes.
+    let eraserVisible = showsConfig && selectedTool == .claude
+    return HStack(spacing: 0) {
+      HeaderIconButton(
+        systemName: "eraser",
+        help: "清除 Claude API 覆盖项",
+        disabled: configModel.isBusy
+      ) {
+        pendingClearClaude = true
       }
+      .opacity(eraserVisible ? 1 : 0)
+      .allowsHitTesting(eraserVisible)
+      .accessibilityHidden(!eraserVisible)
+      .animation(.easeOut(duration: 0.15), value: eraserVisible)
 
       HeaderIconButton(
         systemName: "arrow.clockwise",
@@ -488,6 +493,12 @@ private struct HeaderIconButton: View {
       .foregroundStyle(disabled ? ConsoleInk.chromeMuted.opacity(0.35) : ConsoleInk.chromeText)
       .frame(width: 32, height: 32)
       .contentShape(Rectangle())
+      // Short completing fades for the two changes a busy spell makes to these
+      // icons — the disabled dim and the swap to the spinning glyph. Instant, they
+      // read as a flash on every provider switch. Completing, so they cannot feed
+      // the endless-animation drift described on `SpinningSymbol`.
+      .animation(.easeOut(duration: 0.15), value: spinning)
+      .animation(.easeOut(duration: 0.15), value: disabled)
     }
     .buttonStyle(.plain)
     .disabled(disabled)
@@ -511,17 +522,26 @@ private struct SpinningSymbol: View {
 
   private static let period: TimeInterval = 0.8
 
+  @State private var appearedAt: Date?
+
   var body: some View {
     TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
       Image(systemName: systemName)
-        .rotationEffect(.degrees(Self.angle(at: context.date)))
+        .rotationEffect(.degrees(angle(at: context.date)))
     }
+    .onAppear { if appearedAt == nil { appearedAt = Date() } }
   }
 
-  private static func angle(at date: Date) -> Double {
-    let phase = date.timeIntervalSinceReferenceDate
-      .truncatingRemainder(dividingBy: period)
-    return phase / period * 360
+  /// Phase-locked to this symbol's own appearance. A fresh `SpinningSymbol` replaces
+  /// the static icon each time busy starts, and a wall-clock phase would drop the
+  /// first frame at an arbitrary angle — the jump at the start of every busy spell,
+  /// mirrored by the one at its end. The first frame sits at 0°, the static icon's
+  /// pose, and rotation continues from there.
+  private func angle(at date: Date) -> Double {
+    guard let appearedAt else { return 0 }
+    let phase = date.timeIntervalSince(appearedAt)
+      .truncatingRemainder(dividingBy: Self.period)
+    return phase / Self.period * 360
   }
 }
 
