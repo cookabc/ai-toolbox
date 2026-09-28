@@ -227,17 +227,15 @@ struct UsagePopoverView: View {
         .scaledToFit()
         .frame(width: 28, height: 28)
         .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(AppBranding.title)
-          .font(.system(size: 16, weight: .bold, design: .rounded))
-          .foregroundStyle(ConsoleInk.chromeText)
-        if !headerSubtitle.isEmpty {
-          Text(headerSubtitle.replacingOccurrences(of: "· ", with: ""))
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .foregroundStyle(ConsoleInk.chromeMuted)
-        }
-      }
+      Text(AppBranding.title)
+        .font(.system(size: 16, weight: .bold, design: .rounded))
+        .foregroundStyle(ConsoleInk.chromeText)
       Spacer(minLength: 0)
+      if !headerSubtitle.isEmpty {
+        Text(headerSubtitle.replacingOccurrences(of: "· ", with: ""))
+          .font(.system(size: 10, weight: .medium, design: .monospaced))
+          .foregroundStyle(ConsoleInk.chromeMuted)
+      }
       headerToolbar
     }
     .padding(.horizontal, 14)
