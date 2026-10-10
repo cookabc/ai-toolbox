@@ -8,6 +8,9 @@ struct AIToolboxApp: App {
   init() {
     UserDefaults.standard.set(0.05, forKey: "NSInitialToolTipDelay")
     Self.migrateLegacyPreferencesIfNeeded()
+    // Registered before the first frame, so no label is ever laid out in the
+    // fallback font and then re-laid-out in the pixel one.
+    _ = PixelFont.isAvailable
     let usageModel = UsageViewModel(providers: [
       TranscriptUsageProvider(.codex),
       TranscriptUsageProvider(.claude),
@@ -46,8 +49,7 @@ struct MenuBarLabel: View {
   @ObservedObject var model: UsageViewModel
 
   var body: some View {
-    Label("用量", systemImage: "chart.bar.fill")
-      .labelStyle(.iconOnly)
+    Image(nsImage: MenuBarImage.template)
       .accessibilityLabel(model.statusText)
   }
 }

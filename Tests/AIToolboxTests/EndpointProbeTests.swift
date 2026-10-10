@@ -77,7 +77,8 @@ final class EndpointProbeTests: XCTestCase {
 
     func testSummaryReadsStatusThenLatency() {
         let result = EndpointProbeResult(verdict: .healthy, status: 200, latency: 0.342, detail: "")
-        XCTAssertEqual(result.summary, "200 · 342 ms")
+        XCTAssertEqual(result.summary, "HTTP 200 · 342 ms")
+        XCTAssertEqual(result.verdictLabel, "可用")
         XCTAssertTrue(result.isHealthy)
     }
 

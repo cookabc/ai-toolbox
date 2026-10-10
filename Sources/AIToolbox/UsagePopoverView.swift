@@ -1,46 +1,22 @@
 import AppKit
 import SwiftUI
 
-enum ConsoleInk {
-  private static func adaptive(light: UInt32, dark: UInt32) -> Color {
-    Color(
-      nsColor: NSColor(name: nil) { appearance in
-        let hex = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
-        return NSColor(
-          srgbRed: Double((hex >> 16) & 0xFF) / 255,
-          green: Double((hex >> 8) & 0xFF) / 255,
-          blue: Double(hex & 0xFF) / 255,
-          alpha: 1
-        )
-      })
-  }
-
-  static let chrome = adaptive(light: 0xFFFFFF, dark: 0x112134)
-  static let chromeText = adaptive(light: 0x172D36, dark: 0xFFFFFF)
-  static let chromeMuted = adaptive(light: 0x5A6B70, dark: 0xD6E8E6)
-  static let chromeGroup = adaptive(light: 0xEFF2F2, dark: 0x344350)
-  static let chromeSelected = adaptive(light: 0xFFFFFF, dark: 0x485A65)
-  static let chromeSelectedText = adaptive(light: 0x172D36, dark: 0xFFFFFF)
-  static let chromeModeSelected = adaptive(light: 0xDFEFEC, dark: 0x485A65)
-  static let accent = adaptive(light: 0x0A6B6B, dark: 0x6BE5D4)
-  static let signal = accent
-  static let onAccent = adaptive(light: 0xFFFFFF, dark: 0x112134)
-}
-
 struct UsagePopoverView: View {
   @ObservedObject var model: UsageViewModel
   @StateObject private var configModel = LiveConfigViewModel()
   @State private var selectedTool: LiveConfigApp = .codex
   @State private var showsConfig = false
-  @State private var pendingClearClaude = false
+  private let initialShowsAdvanced: Bool
 
   init(
     model: UsageViewModel,
     initialSelectedTool: LiveConfigApp = .codex,
     initialShowsConfig: Bool = false,
-    configViewModel: LiveConfigViewModel? = nil
+    configViewModel: LiveConfigViewModel? = nil,
+    initialShowsAdvanced: Bool = false
   ) {
     self.model = model
+    self.initialShowsAdvanced = initialShowsAdvanced
     _selectedTool = State(initialValue: initialSelectedTool)
     _showsConfig = State(initialValue: initialShowsConfig)
     _configModel = StateObject(wrappedValue: configViewModel ?? LiveConfigViewModel())
@@ -72,6 +48,17 @@ struct UsagePopoverView: View {
   static let panelWidth: CGFloat = 400
   static let panelMaxHeight: CGFloat = 660
 
+  /// The chrome's rows have fixed, grid-aligned heights: the header, the tab row
+  /// (a 32-point well plus 8 below it) and the 2-point edge under them.
+  static let headerHeight: CGFloat = 44
+  static let tabRowHeight: CGFloat = 40
+  static let chromeEdge: CGFloat = Pixel.border
+  static var designChromeHeight: CGFloat { headerHeight + tabRowHeight + chromeEdge }
+
+  /// While a confirmation is up the panel is at least this tall, so a short page
+  /// (one provider, no list) still has room for the dialog.
+  static let dialogMinimumHeight: CGFloat = 340
+
   /// Natural height of the mode-dependent content, measured during layout.
   ///
   /// Seeded from the **last measured height for this tool and mode** rather than from
@@ -88,25 +75,21 @@ struct UsagePopoverView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      VStack(spacing: 0) {
-        header
-        toolModeBar
-      }
-      .background(ConsoleInk.chrome)
-      .overlay(alignment: .bottom) {
-        Rectangle().fill(ConsoleInk.signal.opacity(0.32)).frame(height: 1)
-      }
-      .background {
-        GeometryReader { proxy in
-          Color.clear.preference(key: ChromeHeightKey.self, value: proxy.size.height)
+      chrome
+        .background {
+          GeometryReader { proxy in
+            Color.clear.preference(key: ChromeHeightKey.self, value: proxy.size.height)
+          }
         }
-      }
       panelBody
     }
+    .disabled(isPresentingDialog)
+    .accessibilityHidden(isPresentingDialog)
     .frame(width: Self.panelWidth)
-    .frame(height: panelHeight)
-    .tint(ConsoleInk.accent)
-    .background(Color(nsColor: .windowBackgroundColor))
+    .frame(height: panelHeight, alignment: .top)
+    .overlay { dialog }
+    .tint(Ink.accent)
+    .background(Ink.canvas)
     .background(
       PanelTopAnchor(height: panelHeight, onOpen: panelDidOpen).frame(width: 0, height: 0)
     )
@@ -122,16 +105,6 @@ struct UsagePopoverView: View {
     .animation(nil, value: selectedTool)
     .animation(nil, value: showsConfig)
     .onAppear(perform: syncOnAppear)
-    .confirmationDialog(
-      "清除 Claude Code 的 API 覆盖项？", isPresented: $pendingClearClaude, titleVisibility: .visible
-    ) {
-      Button("清除覆盖项", role: .destructive) { configModel.clearClaudeOverlay() }
-      Button("取消", role: .cancel) {}
-    } message: {
-      Text(
-        "将从 ~/.claude/settings.json 移除 Base URL、模型、API Key、模型别名，以及已保存供应商接管的 Key，让 Claude Code 回到它自己的登录。其余 env 项保留，供应商库不受影响。"
-      )
-    }
   }
 
   /// The only region whose content differs between tools and modes.
@@ -154,9 +127,9 @@ struct UsagePopoverView: View {
     ScrollView(.vertical) {
       VStack(spacing: 0) {
         if showsConfig {
-          LiveConfigView(model: configModel)
+          LiveConfigView(model: configModel, initialShowsAdvanced: initialShowsAdvanced)
         } else {
-          usageBody
+          UsageDetailView(model: model, openDataDirectory: openDataDirectory)
         }
       }
       .frame(maxWidth: .infinity, alignment: .top)
@@ -189,7 +162,9 @@ struct UsagePopoverView: View {
   /// edge away from the menu bar. Clamping the total means the first frame is already
   /// within the limit.
   private var panelHeight: CGFloat {
-    min(maxBodyHeight, max(bodyHeight, 1)) + chromeHeight
+    let fitted = min(maxBodyHeight, max(bodyHeight, 1)) + chromeHeight
+    guard isPresentingDialog else { return fitted }
+    return min(Self.panelMaxHeight, max(fitted, Self.dialogMinimumHeight))
   }
 
   // MARK: - Remembered heights
@@ -214,32 +189,37 @@ struct UsagePopoverView: View {
     UserDefaults.standard.set(Double(value), forKey: key)
   }
 
-  private var usageBody: some View {
-    UsageDetailView(model: model, openDataDirectory: openDataDirectory)
+  // MARK: - Chrome
+
+  private var chrome: some View {
+    VStack(spacing: 0) {
+      header
+      toolModeBar
+      Rectangle().fill(Ink.chromeLine).frame(height: Self.chromeEdge)
+    }
+    .background(Ink.chrome)
   }
 
-  // MARK: - Header
-
   private var header: some View {
-    HStack(spacing: 8) {
-      Image(nsImage: NSApplication.shared.applicationIconImage)
-        .resizable()
-        .scaledToFit()
-        .frame(width: 28, height: 28)
-        .accessibilityHidden(true)
-      Text(AppBranding.title)
-        .font(.system(size: 16, weight: .bold, design: .rounded))
-        .foregroundStyle(ConsoleInk.chromeText)
+    HStack(spacing: Pixel.Space.m) {
+      AppMark(scale: 2)
+      Text(L10n.App.title)
+        .font(.pixel(2))
+        .foregroundStyle(Ink.chromeText)
+        .lineLimit(1)
+        .fixedSize()
+        .accessibilityAddTraits(.isHeader)
       Spacer(minLength: 0)
-      if !headerSubtitle.isEmpty {
-        Text(headerSubtitle.replacingOccurrences(of: "· ", with: ""))
-          .font(.system(size: 10, weight: .medium, design: .monospaced))
-          .foregroundStyle(ConsoleInk.chromeMuted)
+      if let stamp = headerStamp {
+        Text(stamp.text)
+          .font(.pixel())
+          .foregroundStyle(stamp.isProblem ? Ink.fixed(0xFFC86E) : Ink.chromeMuted)
+          .lineLimit(1)
       }
       headerToolbar
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 12)
+    .padding(.horizontal, Pixel.Space.xl)
+    .frame(height: Self.headerHeight)
   }
 
   private var headerIsBusy: Bool {
@@ -247,142 +227,139 @@ struct UsagePopoverView: View {
   }
 
   private var headerToolbar: some View {
-    // The eraser keeps its slot in every mode: removing it on tool or mode switches
-    // slid the other three icons sideways each time. Hidden instead of absent, so
-    // only its own visibility ever changes.
-    let eraserVisible = showsConfig && selectedTool == .claude
-    return HStack(spacing: 0) {
-      HeaderIconButton(
-        systemName: "eraser",
-        help: "清除 Claude API 覆盖项",
-        disabled: configModel.isBusy
-      ) {
-        pendingClearClaude = true
-      }
-      .opacity(eraserVisible ? 1 : 0)
-      .allowsHitTesting(eraserVisible)
-      .accessibilityHidden(!eraserVisible)
-      .animation(.easeOut(duration: 0.15), value: eraserVisible)
-
-      HeaderIconButton(
-        systemName: "arrow.clockwise",
-        help: showsConfig ? "重新读取配置（⌘R）" : "刷新用量（⌘R）",
-        disabled: headerIsBusy,
-        spinning: headerIsBusy
-      ) {
+    HStack(spacing: 0) {
+      Button {
         if showsConfig {
           configModel.reload()
         } else {
           model.refresh()
         }
+      } label: {
+        Group {
+          if headerIsBusy {
+            PixelSpinner()
+          } else {
+            PixelIconView(.refresh)
+          }
+        }
       }
+      .buttonStyle(PixelIconButtonStyle(context: .chrome))
+      .pixelFocusEffect()
+      .disabled(headerIsBusy)
       .keyboardShortcut("r", modifiers: .command)
+      .help(showsConfig ? L10n.Header.reloadConfig : L10n.Header.refreshUsage)
+      .accessibilityLabel(showsConfig ? L10n.Header.reloadConfig : L10n.Header.refreshUsage)
+      .accessibilityValue(headerIsBusy ? L10n.Common.busy : "")
 
-      HeaderIconButton(
-        systemName: "folder",
-        help: "打开数据目录"
-      ) {
-        openDataDirectory()
+      Button(action: openDataDirectory) {
+        PixelIconView(.folder)
       }
+      .buttonStyle(PixelIconButtonStyle(context: .chrome))
+      .pixelFocusEffect()
+      .help(L10n.Header.openDataDirectory)
+      .accessibilityLabel(L10n.Header.openDataDirectory)
 
-      HeaderIconButton(
-        systemName: "power",
-        help: "退出 \(AppBranding.title)（⌘Q）"
-      ) {
+      Button {
         NSApplication.shared.terminate(nil)
+      } label: {
+        PixelIconView(.power)
       }
+      .buttonStyle(PixelIconButtonStyle(context: .chrome))
+      .pixelFocusEffect()
       .keyboardShortcut("q", modifiers: .command)
+      .help(L10n.Header.quit)
+      .accessibilityLabel(L10n.Header.quit)
     }
-    .frame(height: 32)
   }
 
   private var toolModeBar: some View {
-    HStack(spacing: 10) {
-      HStack(spacing: 2) {
+    HStack(spacing: Pixel.Space.m) {
+      PixelTabWell {
         ForEach(LiveConfigApp.allCases) { app in
-          toolTab(app)
-            .frame(maxWidth: .infinity)
+          let isSelected = selectedTool == app
+          Button {
+            selectTool(app)
+          } label: {
+            HStack(spacing: Pixel.Space.s) {
+              ToolBrandMark(app: app)
+              Text(app.title)
+            }
+          }
+          .buttonStyle(PixelTabStyle(isSelected: isSelected))
+          .pixelFocusEffect()
+          .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
       }
-      .padding(4)
-      .frame(width: 260, height: 36)
-      .background(ConsoleInk.chromeGroup, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+      .frame(width: 236, height: 32)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(L10n.Header.toolPicker)
 
-      Spacer(minLength: 8)
+      Spacer(minLength: 0)
 
-      HStack(spacing: 2) {
-        modeTab(title: "用量", icon: "chart.bar", isSelected: !showsConfig) {
+      PixelTabWell {
+        modeTab(L10n.Mode.usage, help: L10n.Mode.usageHelp, icon: .usage, isSelected: !showsConfig) {
           guard showsConfig else { return }
           showsConfig = false
         }
-        .frame(maxWidth: .infinity)
-        modeTab(title: "配置", icon: "slider.horizontal.3", isSelected: showsConfig) {
+        modeTab(L10n.Mode.config, help: L10n.Mode.configHelp, icon: .config, isSelected: showsConfig) {
           guard !showsConfig else { return }
           showsConfig = true
         }
-        .frame(maxWidth: .infinity)
       }
-      .padding(4)
-      .frame(width: 92, height: 36)
-      .background(ConsoleInk.chromeGroup, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+      .frame(width: 128, height: 32)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(L10n.Header.modePicker)
     }
-    .padding(.horizontal, 14)
-    .padding(.bottom, 10)
+    .padding(.horizontal, Pixel.Space.xl)
+    .padding(.bottom, Pixel.Space.m)
+    .frame(height: Self.tabRowHeight, alignment: .top)
   }
 
-  private func toolTab(_ app: LiveConfigApp) -> some View {
-    let isSelected = selectedTool == app
-    return Button {
-      selectTool(app)
-    } label: {
-      HStack(spacing: 5) {
-        ToolBrandImage(app: app, size: 14)
-        Text(app.title)
-          .lineLimit(1)
-      }
-      .font(.caption.weight(isSelected ? .semibold : .medium))
-      .foregroundStyle(isSelected ? ConsoleInk.chromeSelectedText : ConsoleInk.chromeMuted)
-      .frame(maxWidth: .infinity, minHeight: 28)
-      .padding(.horizontal, 6)
-      .background(
-        isSelected ? ConsoleInk.chromeSelected : Color.clear,
-        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-      )
-      .shadow(color: .black.opacity(isSelected ? 0.06 : 0), radius: 2, y: 1)
-      .contentShape(Capsule())
-    }
-    .buttonStyle(.plain)
-  }
-
-  private func modeTab(title: String, icon: String, isSelected: Bool, action: @escaping () -> Void)
-    -> some View
-  {
+  private func modeTab(
+    _ title: String, help: String, icon: PixelIcon, isSelected: Bool, action: @escaping () -> Void
+  ) -> some View {
     Button(action: action) {
-      Image(systemName: icon)
-        .font(.caption.weight(isSelected ? .semibold : .medium))
-        .symbolVariant(isSelected ? .fill : .none)
-        .foregroundStyle(isSelected ? ConsoleInk.signal : ConsoleInk.chromeMuted)
-        .frame(maxWidth: .infinity, minHeight: 28)
-        .background(
-          isSelected ? ConsoleInk.chromeModeSelected : Color.clear,
-          in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-        )
-        .contentShape(Capsule())
+      HStack(spacing: Pixel.Space.xs) {
+        PixelIconView(icon)
+        Text(title)
+      }
     }
-    .buttonStyle(.plain)
-    .help(title)
-    .accessibilityLabel(title)
+    .buttonStyle(PixelTabStyle(isSelected: isSelected))
+    .pixelFocusEffect()
+    .help(help)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
   }
 
-  private var headerSubtitle: String {
-    if showsConfig { return "" }
-    if model.isRefreshing { return "· 正在读取…" }
-    if model.errorMessage != nil && model.snapshot == nil { return "· 读取失败" }
+  /// The freshness of what is on screen, or what is happening to it.
+  private var headerStamp: (text: String, isProblem: Bool)? {
+    if showsConfig { return nil }
+    if model.isRefreshing { return (L10n.Header.reading, false) }
+    if model.errorMessage != nil && model.snapshot == nil { return (L10n.Header.readFailed, true) }
     if let refreshedAt = model.snapshot?.refreshedAt {
-      return "· \(Format.time(refreshedAt, withDate: !model.isCurrent(model.selectedProvider))) 更新"
+      let time = Format.time(refreshedAt, withDate: !model.isCurrent(model.selectedProvider))
+      return (L10n.Header.updated(time), false)
     }
-    return ""
+    return nil
   }
+
+  // MARK: - Dialog
+
+  private var isPresentingDialog: Bool { configModel.pendingConfirmation != nil }
+
+  @ViewBuilder private var dialog: some View {
+    if let pending = configModel.pendingConfirmation {
+      PixelDialog(
+        title: pending.title,
+        message: pending.message,
+        confirmTitle: pending.confirmTitle,
+        cancelTitle: L10n.Config.cancel,
+        onConfirm: { configModel.confirmPending() },
+        onCancel: { configModel.cancelPending() }
+      )
+    }
+  }
+
+  // MARK: - Selection and lifecycle
 
   private func selectTool(_ tool: LiveConfigApp) {
     guard selectedTool != tool else { return }
@@ -407,9 +384,11 @@ struct UsagePopoverView: View {
 
   /// Both halves go stale while the panel is closed: transcripts keep growing and
   /// the CLIs rewrite their own config files. Reloading the config never touches an
-  /// open draft, so it is safe to do on every open.
+  /// open draft, so it is safe to do on every open. A confirmation belongs to the
+  /// moment it was asked in, so one left open when the panel closed is dropped.
   private func panelDidOpen() {
     model.panelDidOpen()
+    configModel.cancelPending()
     configModel.reload()
   }
 
@@ -431,115 +410,6 @@ struct UsagePopoverView: View {
       directory.deleteLastPathComponent()
     }
     NSWorkspace.shared.open(directory)
-  }
-}
-
-struct SurfaceCard<Content: View>: View {
-  let compact: Bool
-  let active: Bool
-  @ViewBuilder let content: Content
-
-  init(compact: Bool = false, active: Bool = false, @ViewBuilder content: () -> Content) {
-    self.compact = compact
-    self.active = active
-    self.content = content()
-  }
-
-  var body: some View {
-    content
-      .padding(compact ? 10 : 12)
-      .background(cardBackground, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
-          .strokeBorder(
-            active ? ConsoleInk.accent.opacity(0.52) : Color.primary.opacity(0.12),
-            lineWidth: 1
-          )
-      }
-      .overlay(alignment: .leading) {
-        if active {
-          Rectangle()
-            .fill(ConsoleInk.signal)
-            .frame(width: 4)
-            .padding(.vertical, 9)
-        }
-      }
-  }
-
-  private var cardBackground: Color {
-    active ? ConsoleInk.accent.opacity(0.08) : Color(nsColor: .controlBackgroundColor)
-  }
-}
-
-private struct HeaderIconButton: View {
-  let systemName: String
-  let help: String
-  var disabled: Bool = false
-  var spinning: Bool = false
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      Group {
-        if spinning {
-          SpinningSymbol(systemName: systemName)
-        } else {
-          Image(systemName: systemName)
-        }
-      }
-      .font(.system(size: 14, weight: .medium))
-      .foregroundStyle(disabled ? ConsoleInk.chromeMuted.opacity(0.35) : ConsoleInk.chromeText)
-      .frame(width: 32, height: 32)
-      .contentShape(Rectangle())
-      // Short completing fades for the two changes a busy spell makes to these
-      // icons — the disabled dim and the swap to the spinning glyph. Instant, they
-      // read as a flash on every provider switch. Completing, so they cannot feed
-      // the endless-animation drift described on `SpinningSymbol`.
-      .animation(.easeOut(duration: 0.15), value: spinning)
-      .animation(.easeOut(duration: 0.15), value: disabled)
-    }
-    .buttonStyle(.plain)
-    .disabled(disabled)
-    .help(help)
-    .accessibilityLabel(help)
-  }
-}
-
-/// The refresh icon while a reload is in flight.
-///
-/// The angle comes from the timeline rather than from a
-/// `withAnimation(…repeatForever(autoreverses: false))` started in `onAppear`. An endless
-/// animation never completes, so it is still in flight when the next layout pass
-/// repositions the views around it: the panel's own title and tool-tab labels are
-/// re-laid-out in that same transaction, inherit the endless animation, and then slide
-/// forever — a drift that survives closing and reopening the panel and only goes away
-/// when the app is relaunched. A timeline has no animation for anything to inherit: the
-/// angle is a pure function of the date.
-private struct SpinningSymbol: View {
-  let systemName: String
-
-  private static let period: TimeInterval = 0.8
-
-  @State private var appearedAt: Date?
-
-  var body: some View {
-    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-      Image(systemName: systemName)
-        .rotationEffect(.degrees(angle(at: context.date)))
-    }
-    .onAppear { if appearedAt == nil { appearedAt = Date() } }
-  }
-
-  /// Phase-locked to this symbol's own appearance. A fresh `SpinningSymbol` replaces
-  /// the static icon each time busy starts, and a wall-clock phase would drop the
-  /// first frame at an arbitrary angle — the jump at the start of every busy spell,
-  /// mirrored by the one at its end. The first frame sits at 0°, the static icon's
-  /// pose, and rotation continues from there.
-  private func angle(at date: Date) -> Double {
-    guard let appearedAt else { return 0 }
-    let phase = date.timeIntervalSince(appearedAt)
-      .truncatingRemainder(dividingBy: Self.period)
-    return phase / Self.period * 360
   }
 }
 

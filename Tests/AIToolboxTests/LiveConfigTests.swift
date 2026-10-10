@@ -593,6 +593,71 @@ final class LiveConfigTests: XCTestCase {
         XCTAssertEqual(model.providers.map(\.slug), ["relay"])
     }
 
+    // MARK: - Confirmations
+
+    /// Deleting asks first: nothing is removed until the dialog is confirmed, and
+    /// cancelling leaves the library as it was.
+    @MainActor
+    func testDeletingAProviderWaitsForConfirmation() async throws {
+        let fixture = try Fixture()
+        let provider = StoredProvider(
+            app: .claude, name: "公司网关", slug: "company", baseURL: "https://relay.test", model: "m", apiKey: "k")
+        try fixture.library.save([provider])
+        let model = fixture.model()
+        model.app = .claude
+
+        model.requestDelete(provider)
+        XCTAssertEqual(model.pendingConfirmation, .deleteProvider(provider))
+        XCTAssertEqual(model.pendingConfirmation?.title, "删除供应商「公司网关」？")
+        XCTAssertEqual(model.pendingConfirmation?.message, L10n.Config.deleteClaudeMessage)
+        await model.waitUntilIdle()
+        XCTAssertEqual(try fixture.library.load().count, 1, "asking deletes nothing")
+
+        model.cancelPending()
+        XCTAssertNil(model.pendingConfirmation)
+        XCTAssertEqual(try fixture.library.load().count, 1)
+
+        model.requestDelete(provider)
+        model.confirmPending()
+        XCTAssertNil(model.pendingConfirmation, "the dialog closes as the action starts")
+        await model.waitUntilIdle()
+        XCTAssertTrue(try fixture.library.load().isEmpty)
+        XCTAssertEqual(model.statusMessage, "已删除「公司网关」")
+    }
+
+    /// The Claude Code "official login" entry is live exactly when settings.json
+    /// carries none of the keys a provider writes, and switching to it clears them
+    /// only after the user confirms.
+    @MainActor
+    func testClaudeOfficialLoginIsTheAbsenceOfAnOverlay() async throws {
+        let fixture = try Fixture(claudeSettings: #"{ "env": { "ANTHROPIC_BASE_URL": "https://relay.test", "ANTHROPIC_API_KEY": "sk-live", "KEEP": "1" } }"#)
+        let model = fixture.model()
+        model.app = .claude
+        XCTAssertFalse(model.claudeUsesOfficialLogin)
+
+        model.requestClearClaudeOverlay()
+        XCTAssertEqual(model.pendingConfirmation, .clearClaudeOverlay)
+        XCTAssertEqual(try env(of: fixture.paths.claudeSettings)["ANTHROPIC_API_KEY"], "sk-live")
+
+        model.confirmPending()
+        await model.waitUntilIdle()
+        let after = try env(of: fixture.paths.claudeSettings)
+        XCTAssertNil(after["ANTHROPIC_BASE_URL"])
+        XCTAssertNil(after["ANTHROPIC_API_KEY"])
+        XCTAssertEqual(after["KEEP"], "1", "keys no provider owns are left alone")
+        XCTAssertTrue(model.claudeUsesOfficialLogin)
+    }
+
+    /// Unreadable settings are not "official login": the state is unknown, so the
+    /// entry must not claim to be live.
+    @MainActor
+    func testUnreadableClaudeSettingsAreNotOfficialLogin() throws {
+        let fixture = try Fixture(claudeSettings: "{ not json")
+        let model = fixture.model()
+        XCTAssertNotNil(model.claudeReadError)
+        XCTAssertFalse(model.claudeUsesOfficialLogin)
+    }
+
     // MARK: - Helpers
 
     private func uniqueURL(_ name: String) throws -> URL {

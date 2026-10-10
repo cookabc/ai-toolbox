@@ -3,34 +3,51 @@ import SwiftUI
 
 /// The usage half of the panel: today, the last seven days, the lifetime totals and
 /// the models that produced them, for the selected tool.
+///
+/// Today and the week are always shown — they are what the panel is opened for.
+/// The lifetime totals and the model list are details; each folds away, and the
+/// choice is remembered.
 struct UsageDetailView: View {
   @ObservedObject var model: UsageViewModel
   var openDataDirectory: () -> Void
 
+  @AppStorage(Self.lifetimeExpandedKey) private var lifetimeExpanded = true
+  @AppStorage(Self.modelsExpandedKey) private var modelsExpanded = true
+
+  nonisolated static let lifetimeExpandedKey = "usage.lifetimeExpanded"
+  nonisolated static let modelsExpandedKey = "usage.modelsExpanded"
+
   var body: some View {
     if let snapshot = model.snapshot {
-      VStack(spacing: 8) {
+      VStack(spacing: Pixel.Space.m) {
         if let warning = model.sourceWarning(model.selectedProvider) {
-          WarningBanner(
-            text: warning, retry: model.errorMessage == nil ? nil : { model.refresh() },
-            isRetrying: model.isRefreshing)
+          PixelNotice(
+            text: warning,
+            tone: .warning,
+            actionTitle: model.errorMessage == nil ? nil : L10n.Usage.retry,
+            actionDisabled: model.isRefreshing,
+            action: model.errorMessage == nil ? nil : { model.refresh() }
+          )
         }
         TodayCard(model: model, today: model.today())
         TrendCard(days: model.recentDays(7), today: model.currentDate)
-        LifetimeCard(model: model, snapshot: snapshot)
-        if !snapshot.models.isEmpty { ModelsCard(models: snapshot.models) }
-        Text("本机日志中记录的用量，不是账单或订阅额度。")
-          .font(.caption2)
-          .foregroundStyle(.tertiary)
+        LifetimeCard(model: model, snapshot: snapshot, isExpanded: $lifetimeExpanded)
+        if !snapshot.models.isEmpty {
+          ModelsCard(models: snapshot.models, isExpanded: $modelsExpanded)
+        }
+        Text(L10n.Usage.footnote)
+          .font(.system(size: 10))
+          .foregroundStyle(Ink.textMuted)
           .frame(maxWidth: .infinity)
       }
-      .padding(.horizontal, 14)
-      .padding(.bottom, 14)
+      .padding(.horizontal, Pixel.Space.xl)
+      .padding(.top, Pixel.Space.m)
+      .padding(.bottom, Pixel.Space.l)
     } else {
       EmptyUsageState(model: model, openDataDirectory: openDataDirectory)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 24)
-        .padding(.vertical, 28)
+        .padding(.vertical, 24)
     }
   }
 }
@@ -42,35 +59,33 @@ private struct TodayCard: View {
   let today: UsageTotals?
 
   var body: some View {
-    SurfaceCard(active: true) {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("今日输出")
-              .font(.caption.weight(.bold))
-              .foregroundStyle(ConsoleInk.accent)
-            Text(today.map { Format.token($0.outputTokens) } ?? "—")
-              .font(.system(size: 34, weight: .bold, design: .rounded))
-              .tracking(-1)
-              .monospacedDigit()
-              .contentTransition(.numericText())
+    PixelCard(tone: .active) {
+      VStack(alignment: .leading, spacing: Pixel.Space.s) {
+        HStack(alignment: .top, spacing: Pixel.Space.xl) {
+          VStack(alignment: .leading, spacing: Pixel.Space.xs) {
+            Text(L10n.Usage.todayOutput)
+              .font(.pixel())
+              .foregroundStyle(Ink.accent)
+            HeroNumber(text: today.map { Format.token($0.outputTokens) } ?? L10n.Usage.unknown)
+              .help(today.map { L10n.Usage.exactTokens(Format.exact($0.outputTokens)) } ?? "")
               .accessibilityLabel(
-                "今日输出 \(today.map { Format.count($0.outputTokens) } ?? "暂无记录") token")
+                L10n.Usage.todayOutputAccessibility(today.map { Format.exact($0.outputTokens) }))
           }
-          Spacer(minLength: 8)
-          Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 5) {
+          Spacer(minLength: Pixel.Space.m)
+          Grid(alignment: .leading, horizontalSpacing: Pixel.Space.xl, verticalSpacing: Pixel.Space.s) {
             GridRow {
-              MetricPair(title: "输入", value: today.map { Format.token($0.inputTokens) })
-              MetricPair(title: "请求", value: today.map { Format.count($0.requests) })
+              MetricPair(title: L10n.Usage.input, value: today?.inputTokens, compact: Format.token)
+              MetricPair(title: L10n.Usage.requests, value: today?.requests, compact: Format.count)
             }
             GridRow {
-              MetricPair(title: "回合", value: today.map { Format.count($0.turns) })
-              MetricPair(title: "工具", value: today.map { Format.count($0.toolCalls) })
+              MetricPair(title: L10n.Usage.turns, value: today?.turns, compact: Format.count)
+              MetricPair(title: L10n.Usage.toolCalls, value: today?.toolCalls, compact: Format.count)
             }
           }
+          .padding(.top, Pixel.Space.xxs)
         }
         if let today, model.reports(.cacheRead) {
-          Divider().opacity(0.55)
+          PixelDivider()
           InputComposition(totals: today, showsWrite: model.reports(.cacheWrite))
         }
       }
@@ -78,18 +93,40 @@ private struct TodayCard: View {
   }
 }
 
-private struct MetricPair: View {
-  let title: String
-  let value: String?
+/// The day's headline figure in the pixel font at three times its design size.
+///
+/// The font's line box is taller than anything it draws — 13 + 3 pixels around a
+/// 12-pixel glyph cell — so the box is trimmed by the empty pixel rows, keeping the
+/// number tight under its label without clipping a single drawn pixel.
+private struct HeroNumber: View {
+  let text: String
 
   var body: some View {
-    HStack(spacing: 5) {
-      Text(title).foregroundStyle(.secondary)
-      Text(value ?? "—")
-        .monospacedDigit()
-        .fontWeight(.medium)
+    Text(text)
+      .font(.pixel(3))
+      .foregroundStyle(Ink.text)
+      .lineLimit(1)
+      .fixedSize()
+      .padding(.top, -3 * 2)
+      .padding(.bottom, -3 * 2)
+  }
+}
+
+private struct MetricPair: View {
+  let title: String
+  let value: Int64?
+  let compact: (Int64) -> String
+
+  var body: some View {
+    HStack(spacing: Pixel.Space.s) {
+      Text(title).foregroundStyle(Ink.textMuted)
+      Text(value.map(compact) ?? L10n.Usage.unknown)
+        .foregroundStyle(Ink.text)
     }
-    .font(.caption)
+    .font(.pixel())
+    .lineLimit(1)
+    .help(value.map { Format.exact($0) } ?? "")
+    .accessibilityElement(children: .combine)
   }
 }
 
@@ -100,65 +137,105 @@ private struct InputComposition: View {
   let showsWrite: Bool
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Pixel.Space.s) {
       HStack {
-        Text("输入构成")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+        Text(L10n.Usage.composition).foregroundStyle(Ink.textMuted)
         Spacer()
-        Text(totals.inputTokens > 0 ? "缓存命中 \(Format.percent(totals.cacheReadShare))" : "今日暂无输入")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+        Text(
+          totals.inputTokens > 0
+            ? L10n.Usage.cacheHitRate(Format.percent(totals.cacheReadShare))
+            : L10n.Usage.noInputToday
+        )
+        .foregroundStyle(Ink.textMuted)
       }
+      .font(.pixel())
       // An empty bar and a row of zeros say nothing the heading does not.
       if totals.inputTokens > 0 {
         CompositionBar(totals: totals)
-          .frame(height: 6)
-        HStack(spacing: 10) {
-          Legend(title: "缓存读", value: totals.cacheReadTokens, color: .cyan)
-          if showsWrite { Legend(title: "缓存写", value: totals.cacheWriteTokens, color: .indigo) }
-          Legend(title: "未缓存", value: totals.freshInputTokens, color: .gray)
+          .frame(height: 10)
+        HStack(spacing: Pixel.Space.l) {
+          Legend(title: L10n.Usage.cacheRead, value: totals.cacheReadTokens, color: Ink.cacheRead)
+          if showsWrite {
+            Legend(title: L10n.Usage.cacheWrite, value: totals.cacheWriteTokens, color: Ink.cacheWrite)
+          }
+          Legend(title: L10n.Usage.uncached, value: totals.freshInputTokens, color: Ink.uncached)
           Spacer(minLength: 0)
         }
       }
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      "输入构成：缓存读 \(Format.token(totals.cacheReadTokens))，缓存写 \(Format.token(totals.cacheWriteTokens))，未缓存 \(Format.token(totals.freshInputTokens))"
-    )
+      L10n.Usage.compositionAccessibility(
+        read: Format.token(totals.cacheReadTokens),
+        write: showsWrite ? Format.token(totals.cacheWriteTokens) : nil,
+        fresh: Format.token(totals.freshInputTokens)))
   }
 }
 
+/// A legend entry: a square swatch — the pixel equivalent of a dot — and the value.
 private struct Legend: View {
   let title: String
   let value: Int64
   let color: Color
+  var dithered = false
 
   var body: some View {
-    HStack(spacing: 4) {
-      Circle().fill(color).frame(width: 5, height: 5)
+    HStack(spacing: Pixel.Space.xs) {
+      Swatch(color: color, dithered: dithered)
       Text("\(title) \(Format.token(value))").lineLimit(1)
     }
-    .font(.caption2.monospacedDigit())
-    .foregroundStyle(.secondary)
+    .font(.pixel())
+    .foregroundStyle(Ink.textMuted)
+    .help(L10n.Usage.exactTokens(Format.exact(value)))
   }
 }
 
+private struct Swatch: View {
+  let color: Color
+  var dithered = false
+
+  var body: some View {
+    ZStack {
+      if dithered {
+        DitherPattern(cell: 1).fill(color)
+      } else {
+        Rectangle().fill(color)
+      }
+    }
+    .frame(width: 8, height: 8)
+    .accessibilityHidden(true)
+  }
+}
+
+/// Cache read, cache write and uncached input side by side, in whole points.
+/// `PixelMath.segments` keeps the three widths summing to the bar exactly and
+/// keeps any non-zero part at least one point wide.
 private struct CompositionBar: View {
   let totals: UsageTotals
 
   var body: some View {
     GeometryReader { proxy in
-      let width = proxy.size.width
-      HStack(spacing: 0) {
-        Color.cyan.frame(width: width * totals.cacheReadShare)
-        Color.indigo.frame(width: width * totals.cacheWriteShare)
-        Color.gray.opacity(0.45).frame(width: width * totals.freshInputShare)
+      let inner = max(0, Int(proxy.size.width.rounded(.down)) - 2)
+      let widths = PixelMath.segments(
+        [
+          Double(totals.cacheReadTokens),
+          Double(min(totals.cacheWriteTokens, max(0, totals.inputTokens - totals.cacheReadTokens))),
+          Double(totals.freshInputTokens),
+        ],
+        total: inner)
+      ZStack(alignment: .leading) {
+        Rectangle().fill(Ink.sunken)
+        HStack(spacing: 0) {
+          Rectangle().fill(Ink.cacheRead).frame(width: CGFloat(widths[0]))
+          Rectangle().fill(Ink.cacheWrite).frame(width: CGFloat(widths[1]))
+          Rectangle().fill(Ink.uncached).frame(width: CGFloat(widths[2]))
+        }
+        .padding(1)
+        PixelBorder(width: 1, steps: 0).fill(Ink.control, style: FillStyle(eoFill: true))
       }
-      .frame(width: width, alignment: .leading)
-      .background(Color.primary.opacity(0.08))
-      .clipShape(Capsule())
+      .frame(width: CGFloat(inner + 2))
     }
+    .accessibilityHidden(true)
   }
 }
 
@@ -172,61 +249,78 @@ private struct TrendCard: View {
   private var total: Int64 { days.reduce(0) { saturating($0, $1.totals.outputTokens) } }
 
   var body: some View {
-    SurfaceCard(compact: true) {
-      VStack(alignment: .leading, spacing: 8) {
-        HStack {
-          SectionHeading(title: "近 7 天输出", icon: "chart.bar.xaxis")
-          Spacer()
-          Text("合计 \(Format.token(total))")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+    PixelCard {
+      VStack(alignment: .leading, spacing: Pixel.Space.m) {
+        PixelSectionHeader(icon: .calendar, title: L10n.Usage.trend) {
+          Text(L10n.Usage.trendTotal(Format.token(total)))
+            .font(.pixel())
+            .foregroundStyle(Ink.textMuted)
+            .help(L10n.Usage.exactTokens(Format.exact(total)))
         }
-        HStack(alignment: .bottom, spacing: 6) {
+        HStack(alignment: .bottom, spacing: Pixel.Space.s) {
           ForEach(days, id: \.date) { day in
-            TrendBar(
+            TrendColumn(
               day: day, peak: peak, isToday: Calendar.current.isDate(day.date, inSameDayAs: today))
           }
         }
-        .frame(height: 56)
+        .overlay(alignment: .bottom) {
+          // The zero line, under the bars and above the day labels.
+          PixelDivider(color: Ink.lineSoft).padding(.bottom, TrendColumn.labelHeight + 2)
+        }
       }
     }
   }
 }
 
-private struct TrendBar: View {
+/// One day: its value above the bar, so the week reads without hovering, and its
+/// name below. Bar heights are whole points in proportion to the week's peak; a
+/// day with any output gets at least one point, a day with none gets no bar and
+/// says 0.
+private struct TrendColumn: View {
   let day: DailyUsage
   let peak: Int64
   let isToday: Bool
 
-  private var fraction: CGFloat {
-    CGFloat(Double(day.totals.outputTokens) / Double(peak))
-  }
+  static let barHeight = 34
+  static let labelHeight: CGFloat = 16
 
   var body: some View {
-    VStack(spacing: 4) {
-      GeometryReader { proxy in
-        VStack {
-          Spacer(minLength: 0)
-          RoundedRectangle(cornerRadius: 3, style: .continuous)
-            .fill(isToday ? ConsoleInk.accent : ConsoleInk.accent.opacity(0.4))
-            .frame(height: day.totals.outputTokens > 0 ? max(3, proxy.size.height * fraction) : 2)
-            .opacity(day.totals.outputTokens > 0 ? 1 : 0.4)
+    let output = day.totals.outputTokens
+    let height = PixelMath.barLength(Double(output), peak: Double(peak), length: Self.barHeight)
+    VStack(spacing: Pixel.Space.xxs) {
+      Text(Format.token(output))
+        .font(.pixel())
+        .foregroundStyle(isToday ? Ink.accent : Ink.textMuted)
+        .lineLimit(1)
+        .fixedSize()
+      ZStack(alignment: .bottom) {
+        Color.clear
+        if height > 0 {
+          Rectangle()
+            .fill(isToday ? Ink.accent : Ink.accentFill)
+            .overlay(alignment: .top) {
+              // A one-point highlight on top: the light catching a pixel block.
+              if height > 2 { Rectangle().fill(Ink.surface.opacity(0.35)).frame(height: 1) }
+            }
+            .frame(height: CGFloat(height))
         }
       }
-      Text(label)
-        .font(.system(size: 9, weight: isToday ? .semibold : .regular))
-        .foregroundStyle(isToday ? Color.primary : Color.secondary)
+      .frame(height: CGFloat(Self.barHeight))
+      .padding(.bottom, Pixel.Space.xxs + 1)
+      Text(isToday ? L10n.Usage.today : Format.weekday(day.date))
+        .font(.pixel())
+        .foregroundStyle(isToday ? Ink.text : Ink.textMuted)
+        .frame(height: Self.labelHeight)
     }
     .frame(maxWidth: .infinity)
+    .contentShape(Rectangle())
     .help(
-      "\(Format.monthDay(day.date)) · 输出 \(Format.token(day.totals.outputTokens)) · \(Format.count(day.totals.requests)) 请求"
-    )
+      L10n.Usage.dayDetail(
+        date: Format.monthDay(day.date), output: Format.exact(output),
+        requests: Format.count(day.totals.requests)))
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("\(Format.monthDay(day.date))，输出 \(Format.token(day.totals.outputTokens))")
-  }
-
-  private var label: String {
-    isToday ? "今天" : Format.weekday(day.date)
+    .accessibilityLabel(
+      L10n.Usage.dayAccessibility(date: Format.monthDay(day.date), output: Format.token(output)))
   }
 }
 
@@ -235,39 +329,50 @@ private struct TrendBar: View {
 private struct LifetimeCard: View {
   @ObservedObject var model: UsageViewModel
   let snapshot: UsageSnapshot
+  @Binding var isExpanded: Bool
 
   var body: some View {
     let totals = snapshot.totals
-    SurfaceCard {
-      VStack(alignment: .leading, spacing: 8) {
-        HStack {
-          SectionHeading(title: "累计用量", icon: "clock.arrow.circlepath")
-          Spacer()
+    PixelCard {
+      VStack(alignment: .leading, spacing: Pixel.Space.m) {
+        CollapsibleHeader(icon: .clock, title: L10n.Usage.lifetime, isExpanded: $isExpanded) {
           if let first = snapshot.firstActiveDay {
-            Text("自 \(Format.day(first))")
-              .font(.caption2)
-              .foregroundStyle(.secondary)
+            Text(L10n.Usage.since(Format.day(first)))
+              .font(.pixel())
+              .foregroundStyle(Ink.textMuted)
           }
         }
-        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
-          GridRow {
-            StatTile(title: "输入", value: Format.token(totals.inputTokens), accent: .gray)
-            StatTile(
-              title: "输出", value: Format.token(totals.outputTokens), accent: ConsoleInk.accent)
+        if isExpanded {
+          Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: Pixel.Space.s) {
+            GridRow {
+              StatTile(
+                title: L10n.Usage.input, value: Format.token(totals.inputTokens),
+                exact: Format.exact(totals.inputTokens), color: Ink.inputSeries)
+              StatTile(
+                title: L10n.Usage.output, value: Format.token(totals.outputTokens),
+                exact: Format.exact(totals.outputTokens), color: Ink.accentFill)
+            }
+            GridRow {
+              StatTile(
+                title: L10n.Usage.cacheRead, value: model.display(totals.cacheReadTokens, .cacheRead),
+                exact: model.reports(.cacheRead) ? Format.exact(totals.cacheReadTokens) : nil,
+                color: Ink.cacheRead)
+              // Reasoning is part of output, so it wears output's colour, half-toned.
+              StatTile(
+                title: L10n.Usage.reasoning, value: model.display(totals.reasoningTokens, .reasoning),
+                exact: model.reports(.reasoning) ? Format.exact(totals.reasoningTokens) : nil,
+                color: Ink.accentFill, dithered: true)
+            }
           }
-          GridRow {
-            StatTile(
-              title: "缓存读", value: model.display(totals.cacheReadTokens, .cacheRead), accent: .cyan)
-            StatTile(
-              title: "推理", value: model.display(totals.reasoningTokens, .reasoning), accent: .purple
-            )
-          }
+          Text(
+            L10n.Usage.activity(
+              requests: Format.count(totals.requests), turns: Format.count(totals.turns),
+              toolCalls: Format.count(totals.toolCalls))
+          )
+          .font(.pixel())
+          .foregroundStyle(Ink.textMuted)
+          .lineLimit(1)
         }
-        Text(
-          "\(Format.count(totals.requests)) 请求 · \(Format.count(totals.turns)) 回合 · \(Format.count(totals.toolCalls)) 次工具调用"
-        )
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
       }
     }
   }
@@ -276,18 +381,22 @@ private struct LifetimeCard: View {
 private struct StatTile: View {
   let title: String
   let value: String
-  let accent: Color
+  let exact: String?
+  let color: Color
+  var dithered = false
 
   var body: some View {
-    HStack(spacing: 6) {
-      Circle().fill(accent).frame(width: 6, height: 6)
-      Text(title).font(.caption).foregroundStyle(.secondary)
-      Spacer(minLength: 4)
-      Text(value)
-        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-        .monospacedDigit()
+    HStack(spacing: Pixel.Space.s) {
+      Swatch(color: color, dithered: dithered)
+      Text(title).foregroundStyle(Ink.textMuted)
+      Spacer(minLength: Pixel.Space.xs)
+      Text(value).foregroundStyle(Ink.text)
     }
+    .font(.pixel())
+    .lineLimit(1)
     .frame(maxWidth: .infinity)
+    .help(exact.map { L10n.Usage.exactTokens($0) } ?? "")
+    .accessibilityElement(children: .combine)
   }
 }
 
@@ -295,22 +404,28 @@ private struct StatTile: View {
 
 private struct ModelsCard: View {
   let models: [ModelUsage]
+  @Binding var isExpanded: Bool
   private static let limit = 4
 
   var body: some View {
     let shown = Array(models.prefix(Self.limit))
     let peak = max(1, shown.first?.outputTokens ?? 1)
-    SurfaceCard(compact: true) {
-      VStack(alignment: .leading, spacing: 7) {
-        HStack {
-          SectionHeading(title: "模型", icon: "cpu")
-          Spacer()
-          Text(models.count > Self.limit ? "按输出 · 前 \(Self.limit) / \(models.count)" : "按输出排序")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+    PixelCard {
+      VStack(alignment: .leading, spacing: Pixel.Space.m) {
+        CollapsibleHeader(icon: .chip, title: L10n.Usage.models, isExpanded: $isExpanded) {
+          Text(
+            models.count > Self.limit
+              ? L10n.Usage.topModels(Self.limit, of: models.count) : L10n.Usage.byOutput
+          )
+          .font(.pixel())
+          .foregroundStyle(Ink.textMuted)
         }
-        ForEach(shown) { item in
-          ModelRow(item: item, peak: peak)
+        if isExpanded {
+          VStack(alignment: .leading, spacing: Pixel.Space.xs) {
+            ForEach(shown) { item in
+              ModelRow(item: item, peak: peak)
+            }
+          }
         }
       }
     }
@@ -322,117 +437,123 @@ private struct ModelRow: View {
   let peak: Int64
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 3) {
-      HStack(spacing: 8) {
+    VStack(alignment: .leading, spacing: Pixel.Space.xxs) {
+      HStack(spacing: Pixel.Space.m) {
         Text(item.modelID)
-          .font(.caption.weight(.medium))
+          .font(.uiMono)
+          .foregroundStyle(Ink.text)
           .lineLimit(1)
           .truncationMode(.middle)
-        Spacer(minLength: 6)
-        Text("\(Format.count(item.requests)) 请求")
-          .font(.caption2.monospacedDigit())
-          .foregroundStyle(.tertiary)
+          .help(item.modelID)
+        Spacer(minLength: Pixel.Space.s)
+        Text(L10n.Usage.modelRequests(Format.count(item.requests)))
+          .font(.pixel())
+          .foregroundStyle(Ink.textMuted)
+          .lineLimit(1)
         Text(Format.token(item.outputTokens))
-          .font(.caption.monospacedDigit().weight(.semibold))
-          .frame(minWidth: 40, alignment: .trailing)
+          .font(.pixel())
+          .foregroundStyle(Ink.text)
+          .lineLimit(1)
+          .frame(minWidth: 44, alignment: .trailing)
+          .help(L10n.Usage.exactTokens(Format.exact(item.outputTokens)))
       }
       GeometryReader { proxy in
+        let length = Int(proxy.size.width.rounded(.down))
+        let filled = PixelMath.barLength(
+          Double(item.outputTokens), peak: Double(peak), length: length)
         ZStack(alignment: .leading) {
-          Capsule().fill(Color.primary.opacity(0.08))
-          Capsule()
-            .fill(ConsoleInk.accent.opacity(0.85))
-            .frame(
-              width: max(3, proxy.size.width * CGFloat(Double(item.outputTokens) / Double(peak))))
+          DitherPattern(cell: 1).fill(Ink.lineSoft)
+          Rectangle().fill(Ink.accentFill).frame(width: CGFloat(filled))
         }
       }
       .frame(height: 3)
+      .accessibilityHidden(true)
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      "\(item.modelID)，输出 \(Format.token(item.outputTokens))，\(Format.count(item.requests)) 请求")
+      L10n.Usage.modelAccessibility(
+        id: item.modelID, output: Format.token(item.outputTokens),
+        requests: Format.count(item.requests)))
+  }
+}
+
+/// A card title that folds the card: the whole row is the button.
+private struct CollapsibleHeader<Trailing: View>: View {
+  let icon: PixelIcon
+  let title: String
+  @Binding var isExpanded: Bool
+  @ViewBuilder let trailing: Trailing
+
+  var body: some View {
+    Button {
+      isExpanded.toggle()
+    } label: {
+      HStack(spacing: Pixel.Space.s) {
+        PixelIconView(icon).foregroundStyle(Ink.textMuted)
+        Text(title).font(.pixel()).foregroundStyle(Ink.text)
+        Spacer(minLength: Pixel.Space.s)
+        trailing
+        PixelIconView(isExpanded ? .chevronDown : .chevronRight)
+          .foregroundStyle(Ink.textMuted)
+      }
+      .frame(minHeight: 16)
+    }
+    .buttonStyle(PixelPlainButtonStyle())
+    .pixelFocusEffect()
+    .help(L10n.Usage.toggleSection(title, expanded: isExpanded))
+    .accessibilityLabel(title)
+    .accessibilityValue(isExpanded ? L10n.Common.expanded : L10n.Common.collapsed)
+    .accessibilityHint(L10n.Usage.toggleSection(title, expanded: isExpanded))
   }
 }
 
 // MARK: - States
-
-private struct WarningBanner: View {
-  let text: String
-  let retry: (() -> Void)?
-  let isRetrying: Bool
-
-  var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundStyle(.orange)
-      Text(text)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 4)
-      if let retry {
-        Button("重试", action: retry)
-          .buttonStyle(.borderless)
-          .disabled(isRetrying)
-      }
-    }
-    .font(.caption)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-    .background(
-      Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-  }
-}
 
 private struct EmptyUsageState: View {
   @ObservedObject var model: UsageViewModel
   let openDataDirectory: () -> Void
 
   var body: some View {
-    VStack(spacing: 12) {
-      ZStack {
-        Circle().fill(ConsoleInk.accent.opacity(0.12)).frame(width: 56, height: 56)
-        if model.isRefreshing {
-          ProgressView().controlSize(.small)
-        } else {
-          Image(systemName: "tray")
-            .font(.title2)
-            .foregroundStyle(ConsoleInk.accent)
-        }
-      }
-      Text(title).font(.headline)
+    VStack(spacing: Pixel.Space.l) {
+      TerminalIllustration(mode: illustration)
+      Text(title)
+        .font(.pixel())
+        .foregroundStyle(Ink.text)
+        .multilineTextAlignment(.center)
+        .accessibilityAddTraits(.isHeader)
       Text(message)
         .multilineTextAlignment(.center)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: 290)
+        .font(.uiCaption)
+        .foregroundStyle(Ink.textMuted)
+        .frame(maxWidth: 300)
         .fixedSize(horizontal: false, vertical: true)
       if !model.isRefreshing {
-        HStack(spacing: 12) {
-          Button("重新读取") { model.refresh() }
-          Button("打开记录目录", action: openDataDirectory)
-            .buttonStyle(.borderless)
+        HStack(spacing: Pixel.Space.m) {
+          Button(L10n.Usage.reload) { model.refresh() }
+            .buttonStyle(PixelButtonStyle(kind: .secondary, icon: .refresh))
+            .pixelFocusEffect()
+          Button(L10n.Usage.openRecords, action: openDataDirectory)
+            .buttonStyle(PixelButtonStyle(kind: .quiet, icon: .folder))
+            .pixelFocusEffect()
         }
-        .font(.caption)
+        .padding(.top, Pixel.Space.xxs)
       }
     }
   }
 
+  private var illustration: TerminalIllustration.Mode {
+    if model.isRefreshing { return .loading }
+    return model.errorMessage == nil ? .empty : .error
+  }
+
   private var title: String {
-    if model.isRefreshing { return "正在读取本地记录" }
-    return model.errorMessage == nil ? "还没有用量数据" : "暂时读不到 \(model.selectedProvider.title) 的记录"
+    if model.isRefreshing { return L10n.Usage.loadingTitle }
+    return model.errorMessage == nil
+      ? L10n.Usage.emptyTitle : L10n.Usage.unreadableTitle(model.selectedProvider.title)
   }
 
   private var message: String {
-    if model.isRefreshing { return "第一次读取需要扫描全部历史记录，之后只读新增部分。" }
-    return model.errorMessage ?? "等 \(model.selectedProvider.title) 写入用量记录后，这里会自动更新。"
-  }
-}
-
-struct SectionHeading: View {
-  let title: String
-  let icon: String
-
-  var body: some View {
-    Label(title, systemImage: icon)
-      .font(.caption.weight(.bold))
-      .foregroundStyle(.secondary)
+    if model.isRefreshing { return L10n.Usage.loadingMessage }
+    return model.errorMessage ?? L10n.Usage.emptyMessage(model.selectedProvider.title)
   }
 }

@@ -34,15 +34,20 @@ final class PanelLayoutTests: XCTestCase {
     from: DateComponents(year: 2026, month: 9, day: 14, hour: 9, minute: 41)
   )!
 
+  /// Defaults the panel reads while it lays out. `selectedTool` is restored by
+  /// `syncOnAppear()`, and a folded card is shorter, so a value leaked from an
+  /// earlier run would silently change what every test measures.
+  nonisolated private static let layoutDefaults = [
+    "selectedTool", UsageDetailView.lifetimeExpandedKey, UsageDetailView.modelsExpandedKey,
+  ]
+
   override func setUp() {
     super.setUp()
-    // UsagePopoverView.syncOnAppear() restores selectedTool from this default, so a
-    // leaked value would silently make every render measure the same tool.
-    UserDefaults.standard.removeObject(forKey: "selectedTool")
+    Self.layoutDefaults.forEach(UserDefaults.standard.removeObject(forKey:))
   }
 
   override func tearDown() {
-    UserDefaults.standard.removeObject(forKey: "selectedTool")
+    Self.layoutDefaults.forEach(UserDefaults.standard.removeObject(forKey:))
     super.tearDown()
   }
 
@@ -298,6 +303,39 @@ final class PanelLayoutTests: XCTestCase {
     XCTAssertEqual(NSHostingView(rootView: view).fittingSize.width, UsagePopoverView.panelWidth)
   }
 
+  /// A confirmation is drawn inside the panel, so a short page has to make room for
+  /// it — and give the room back once it is answered.
+  func testDialogGivesAShortPanelRoomToConfirm() throws {
+    UserDefaults.standard.set(LiveConfigApp.codex.rawValue, forKey: "selectedTool")
+    let config = LiveConfigViewModel.gallery(app: .codex, .official)
+    let host = NSHostingView(
+      rootView: UsagePopoverView(
+        model: UsageViewModel(providers: [], preferences: nil),
+        initialSelectedTool: .codex, initialShowsConfig: true, configViewModel: config))
+    host.appearance = NSAppearance(named: .aqua)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: UsagePopoverView.panelWidth, height: 40),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.isReleasedWhenClosed = false
+    window.contentView = host
+    window.makeKeyAndOrderFront(nil)
+    defer { window.close() }
+
+    pump(host, for: 0.4)
+    let short = window.frame.height
+    XCTAssertLessThan(short, UsagePopoverView.dialogMinimumHeight, "the fixture must be shorter than a dialog")
+
+    let provider = try XCTUnwrap(config.providers.first)
+    config.requestDelete(provider)
+    pump(host, for: 0.4)
+    XCTAssertGreaterThanOrEqual(window.frame.height, UsagePopoverView.dialogMinimumHeight - 0.5)
+
+    config.cancelPending()
+    pump(host, for: 0.4)
+    XCTAssertEqual(window.frame.height, short, accuracy: 0.5, "the room is given back")
+  }
+
   /// The menu-bar item anchors MenuBarExtra horizontally. An icon-only item must
   /// keep the same width while the selected provider and its output change.
   func testMenuBarItemWidthStaysFixedAcrossProviderSwitches() async throws {
@@ -404,8 +442,8 @@ final class PanelLayoutTests: XCTestCase {
 
   // MARK: - Helpers
 
-  /// Measured chrome height, matching the constant the panel derives its cap from.
-  private var chromeHeight: CGFloat { 102 }
+  /// The chrome's height: its rows have fixed, grid-aligned heights.
+  private var chromeHeight: CGFloat { UsagePopoverView.designChromeHeight }
 
   private func configCase(_ app: LiveConfigApp) throws -> (UsagePopoverView, CGFloat) {
     UserDefaults.standard.set(app.rawValue, forKey: "selectedTool")

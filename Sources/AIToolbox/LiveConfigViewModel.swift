@@ -19,6 +19,36 @@ final class LiveConfigViewModel: ObservableObject {
         case done(EndpointProbeResult)
     }
 
+    /// A destructive action waiting for the user to confirm it. Held here rather than
+    /// in the view so the panel can present it above everything — header included —
+    /// and so the decision itself is testable without a window.
+    enum PendingConfirmation: Equatable {
+        case deleteProvider(StoredProvider)
+        case clearClaudeOverlay
+
+        var title: String {
+            switch self {
+            case .deleteProvider(let provider): L10n.Config.deleteTitle(provider.name)
+            case .clearClaudeOverlay: L10n.Config.clearClaudeTitle
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .deleteProvider(let provider):
+                provider.app == .codex ? L10n.Config.deleteCodexMessage : L10n.Config.deleteClaudeMessage
+            case .clearClaudeOverlay: L10n.Config.clearClaudeMessage
+            }
+        }
+
+        var confirmTitle: String {
+            switch self {
+            case .deleteProvider: L10n.Config.delete
+            case .clearClaudeOverlay: L10n.Config.clearClaudeConfirm
+            }
+        }
+    }
+
     @Published var app: LiveConfigApp = .claude
     @Published private(set) var providers: [StoredProvider] = []
     @Published private(set) var claudeLive = ClaudeLiveSettings.empty
@@ -48,6 +78,8 @@ final class LiveConfigViewModel: ObservableObject {
     /// Probe results keyed by provider id. Kept out of `messages` on purpose: a
     /// slow endpoint must not look like a failed edit.
     @Published private(set) var probeStates: [UUID: ProbeState] = [:]
+
+    @Published private(set) var pendingConfirmation: PendingConfirmation?
 
     private let store: LiveConfigStore
     private var claudeSecret = ""
@@ -79,7 +111,8 @@ final class LiveConfigViewModel: ObservableObject {
             providers = try store.library.load()
             libraryReadError = nil
         } catch {
-            libraryReadError = "无法读取供应商库（\(store.library.url.path)）：\(error.localizedDescription)"
+            libraryReadError = L10n.Config.libraryUnreadable(
+                path: store.library.url.path, reason: error.localizedDescription)
         }
         do {
             let loaded = try ClaudeLiveSettingsStore.load(from: store.paths.claudeSettings)
@@ -89,7 +122,7 @@ final class LiveConfigViewModel: ObservableObject {
         } catch {
             claudeLive = .empty
             claudeSecret = ""
-            claudeReadError = "无法读取 ~/.claude/settings.json：\(error.localizedDescription)"
+            claudeReadError = L10n.Config.claudeUnreadable(error.localizedDescription)
         }
         let codex = store.readCodex()
         codexLive = codex.settings
@@ -146,6 +179,12 @@ final class LiveConfigViewModel: ObservableObject {
 
     var codexUsesOfficialLogin: Bool {
         codexLive.currentProviderID == CodexTomlEditor.builtInOpenAI.id
+    }
+
+    /// Claude Code is on its own login when `settings.json` carries none of the keys
+    /// a provider writes. Unknown while the file cannot be read.
+    var claudeUsesOfficialLogin: Bool {
+        claudeReadError == nil && !claudeLive.hasOverlay
     }
 
     /// A problem reading the files the selected tab depends on. Unlike `errorMessage`
@@ -261,9 +300,9 @@ final class LiveConfigViewModel: ObservableObject {
                 if !appliesLive {
                     do { try store.syncCodexTable(saved) } catch { note = error.localizedDescription }
                 }
-                let base = activate ? "已保存并切换到 \(saved.name)"
-                    : wasActive ? "已保存 \(saved.name)，当前生效的配置已同步更新"
-                    : "已保存 \(saved.name)，当前生效的配置没有改变"
+                let base = activate ? L10n.Config.savedAndSwitched(saved.name)
+                    : wasActive ? L10n.Config.savedLiveUpdated(saved.name)
+                    : L10n.Config.savedLiveUnchanged(saved.name)
                 return statusLine(base, note: note)
             }
         } catch {
@@ -275,7 +314,7 @@ final class LiveConfigViewModel: ObservableObject {
         let removing = claudeRemovingKeys(for: provider, among: providers)
         perform(provider.app) { store in
             let note = try store.activate(provider, removingClaudeKeys: removing)
-            return statusLine("已切换到 \(provider.name)", note: note)
+            return statusLine(L10n.Config.switched(provider.name), note: note)
         }
     }
 
@@ -285,8 +324,31 @@ final class LiveConfigViewModel: ObservableObject {
     func useCodexOfficial() {
         perform(.codex) { store in
             try store.useCodexOfficial()
-            return "已切换到官方 OpenAI"
+            return L10n.Config.switchedToOfficialOpenAI
         }
+    }
+
+    // MARK: - Confirmation
+
+    func requestDelete(_ provider: StoredProvider) {
+        pendingConfirmation = .deleteProvider(provider)
+    }
+
+    func requestClearClaudeOverlay() {
+        pendingConfirmation = .clearClaudeOverlay
+    }
+
+    func confirmPending() {
+        guard let pending = pendingConfirmation else { return }
+        pendingConfirmation = nil
+        switch pending {
+        case .deleteProvider(let provider): delete(provider)
+        case .clearClaudeOverlay: clearClaudeOverlay()
+        }
+    }
+
+    func cancelPending() {
+        pendingConfirmation = nil
     }
 
     func delete(_ provider: StoredProvider) {
@@ -303,7 +365,7 @@ final class LiveConfigViewModel: ObservableObject {
             // describes it and nothing is half done.
             if provider.app == .codex { try store.removeCodexProvider(provider.slug) }
             try store.updateLibrary { $0.removeAll { $0.id == provider.id } }
-            return "已删除 \(provider.name)"
+            return L10n.Config.deleted(provider.name)
         }
     }
 
@@ -321,7 +383,7 @@ final class LiveConfigViewModel: ObservableObject {
                 case .claude:
                     let (live, secret) = try ClaudeLiveSettingsStore.load(from: store.paths.claudeSettings)
                     guard live.hasOverlay else { return }
-                    let name = URL(string: live.baseURL)?.host ?? "当前 Claude 配置"
+                    let name = URL(string: live.baseURL)?.host ?? L10n.Config.importedClaudeName
                     let taken = Set(providers.filter { $0.app == .claude }.map(\.slug))
                     providers.append(StoredProvider(
                         app: .claude,
@@ -354,7 +416,7 @@ final class LiveConfigViewModel: ObservableObject {
                     }
                 }
             }
-            return count > 0 ? "已导入 \(count) 个现有配置" : "没有需要导入的配置"
+            return count > 0 ? L10n.Config.imported(count) : L10n.Config.nothingToImport
         }
     }
 
@@ -362,7 +424,7 @@ final class LiveConfigViewModel: ObservableObject {
         let owned = Set(providers.filter { $0.app == .claude }.flatMap(\.extraEnv.keys))
         perform(.claude) { store in
             try store.clearClaude(providerKeys: owned)
-            return "已清除 Claude Code 的 API 覆盖项，恢复使用它自己的登录"
+            return L10n.Config.clearedClaude
         }
     }
 
@@ -397,12 +459,12 @@ final class LiveConfigViewModel: ObservableObject {
     private func draftProvider(for target: LiveConfigApp) throws -> (StoredProvider, wasActive: Bool) {
         let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
         let baseURL = draftBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { throw LiveConfigError.missingField("名称") }
-        guard !baseURL.isEmpty else { throw LiveConfigError.missingField("Base URL") }
+        guard !name.isEmpty else { throw LiveConfigError.missingField(L10n.Config.name) }
+        guard !baseURL.isEmpty else { throw LiveConfigError.missingField(L10n.Config.baseURL) }
         guard let components = URLComponents(string: baseURL),
               ["http", "https"].contains(components.scheme?.lowercased() ?? ""),
               !(components.host ?? "").isEmpty else {
-            throw LiveConfigError.missingField("以 http:// 或 https:// 开头的 Base URL")
+            throw LiveConfigError.missingField(L10n.Config.fieldBaseURLScheme)
         }
         let key = draftAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let model = draftModel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -418,7 +480,7 @@ final class LiveConfigViewModel: ObservableObject {
         switch draftMode {
         case .edit(let id):
             guard var provider = providers.first(where: { $0.id == id }) else {
-                throw LiveConfigError.writeFailed("要编辑的供应商已不在供应商库中。")
+                throw LiveConfigError.writeFailed(L10n.Config.editedProviderGone)
             }
             let wasActive = activeProviderID(for: provider.app) == id
             provider.name = name
@@ -446,7 +508,7 @@ final class LiveConfigViewModel: ObservableObject {
                 apiKey: key, credential: draftCredential, extraEnv: extraEnv
             ), false)
         case .none:
-            throw LiveConfigError.missingField("供应商信息")
+            throw LiveConfigError.missingField(L10n.Config.fieldProvider)
         }
     }
 
@@ -511,7 +573,7 @@ final class LiveConfigViewModel: ObservableObject {
 /// worked but Codex will not list the model until it can be published.
 private func statusLine(_ text: String, note: String?) -> String {
     guard let note else { return text }
-    return "\(text)。\(note)"
+    return L10n.Config.withNote(text, note)
 }
 
 extension LiveConfigViewModel {
@@ -531,7 +593,7 @@ extension LiveConfigViewModel {
             StoredProvider(
                 id: relayID,
                 app: .codex,
-                name: "Relay API",
+                name: "中转网关",
                 slug: "relay-api",
                 baseURL: "https://relay.example/v1",
                 model: "gpt-5",
@@ -540,7 +602,7 @@ extension LiveConfigViewModel {
             StoredProvider(
                 id: claudeID,
                 app: .claude,
-                name: "Company Gateway",
+                name: "公司网关",
                 slug: "company-gateway",
                 baseURL: "https://api.company.test/v1",
                 model: "claude-sonnet-4",
@@ -557,7 +619,7 @@ extension LiveConfigViewModel {
                     CodexTomlEditor.builtInOpenAI,
                     CodexProviderRecord(
                         id: "relay-api",
-                        name: "Relay API",
+                        name: "中转网关",
                         baseURL: "https://relay.example/v1",
                         hasAPIKey: true,
                         maskedAPIKey: SecretDisplay.mask("sk-doc-relay-key"),
@@ -581,8 +643,76 @@ extension LiveConfigViewModel {
                 verdict: .healthy,
                 status: 200,
                 latency: 0.34,
-                detail: "端点可达，路由与凭据都正常。"
+                detail: L10n.Probe.healthyDetail
             ))
+        }
+    }
+
+    /// Fixture states beyond the README's, for the state gallery the visual review
+    /// is done against. Sample data only; like `seedDocumentation`, a model seeded
+    /// this way never reads or writes the user's files.
+    enum GalleryScenario {
+        /// Three providers: the live one, one whose probe failed, one never probed.
+        case crowded
+        /// The live config points somewhere the library does not describe.
+        case unmanaged
+        /// The provider library cannot be read, and the last action failed.
+        case unreadable
+        /// No saved providers; the tool is on its own login.
+        case official
+    }
+
+    static func gallery(app: LiveConfigApp, _ scenario: GalleryScenario) -> LiveConfigViewModel {
+        let model = LiveConfigViewModel()
+        model.seedDocumentation(app: app)
+        model.seedGallery(scenario)
+        return model
+    }
+
+    func seedGallery(_ scenario: GalleryScenario) {
+        switch scenario {
+        case .crowded:
+            let failing = StoredProvider(
+                app: app, name: "备用中转", slug: "backup-relay",
+                baseURL: "https://backup.example/v1/",
+                model: app == .codex ? "gpt-5-codex" : "claude-opus-4",
+                apiKey: "sk-doc-backup-key", credential: .authToken)
+            let idle = StoredProvider(
+                app: app, name: "本地网关（实验）", slug: "local-lab",
+                baseURL: "http://192.168.1.20:8080/v1", model: "", apiKey: "")
+            providers += [failing, idle]
+            probeStates[failing.id] = .done(EndpointProbeResult(
+                verdict: .badRoute, status: 404, latency: 0.128,
+                detail: app == .claude ? L10n.Probe.badRouteClaude : L10n.Probe.badRouteCodex))
+            probeStates[idle.id] = .running
+            messages[app] = Message(text: L10n.Config.switched(providers.first { $0.app == app }!.name), isError: false)
+        case .unmanaged:
+            switch app {
+            case .codex:
+                codexLive.providers.append(CodexProviderRecord(
+                    id: "hand-written", name: "hand-written", baseURL: "https://manual.example/v1",
+                    hasAPIKey: true, maskedAPIKey: SecretDisplay.mask("sk-manual-0000"), isBuiltIn: false))
+            case .claude:
+                claudeLive = ClaudeLiveSettings(
+                    baseURL: "https://unsaved.example", model: "claude-sonnet-4", hasAPIKey: true,
+                    maskedAPIKey: SecretDisplay.mask("sk-unsaved-0000"))
+                claudeSecret = "sk-unsaved-0000"
+            }
+        case .unreadable:
+            libraryReadError = L10n.Config.libraryUnreadable(
+                path: "~/Library/Application Support/AIToolbox/providers.json",
+                reason: "数据格式不正确。")
+            messages[app] = Message(text: LiveConfigError.libraryUnreadable.localizedDescription, isError: true)
+        case .official:
+            providers.removeAll { $0.app == app }
+            probeStates = [:]
+            switch app {
+            case .codex:
+                codexLive = .official
+            case .claude:
+                claudeLive = .empty
+                claudeSecret = ""
+            }
         }
     }
 }

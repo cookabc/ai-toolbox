@@ -32,18 +32,34 @@ struct EndpointProbeResult: Equatable, Sendable {
 
     var isHealthy: Bool { verdict == .healthy }
 
-    /// Compact label for the provider card, e.g. `200 · 342 ms`.
+    /// Compact readout for the provider card, e.g. `HTTP 200 · 342 ms`.
     var summary: String {
-        let time = String(format: "%.0f ms", latency * 1000)
+        let time = L10n.Probe.latency(Format.milliseconds(latency))
         guard let status else { return time }
-        return "\(status) · \(time)"
+        return "\(L10n.Probe.status(status)) · \(time)"
     }
 
-    var symbolName: String {
+    /// The verdict in a word or two, shown before the readout so the outcome does
+    /// not depend on reading a colour or knowing what a status code means.
+    var verdictLabel: String {
         switch verdict {
-        case .healthy: "checkmark.circle.fill"
-        case .needsAuth, .rejected: "exclamationmark.circle.fill"
-        case .badRoute, .unsupported, .unreachable: "xmark.circle.fill"
+        case .healthy: L10n.Probe.healthy
+        case .needsAuth: L10n.Probe.needsAuth
+        case .badRoute: L10n.Probe.badRoute
+        case .unsupported: L10n.Probe.unsupported
+        case .rejected: L10n.Probe.rejected
+        case .unreachable: L10n.Probe.unreachable
+        }
+    }
+
+    /// How serious the outcome is: fine, fixable on the user's side, or broken.
+    enum Severity: Equatable, Sendable { case ok, caution, failure }
+
+    var severity: Severity {
+        switch verdict {
+        case .healthy: .ok
+        case .needsAuth, .rejected: .caution
+        case .badRoute, .unsupported, .unreachable: .failure
         }
     }
 }
@@ -148,7 +164,7 @@ enum EndpointProbe {
                 verdict: .unreachable,
                 status: nil,
                 latency: 0,
-                detail: "Base URL 无法解析成可请求的 http/https 地址。"
+                detail: L10n.Probe.unusableURL
             )
         }
 
@@ -171,7 +187,7 @@ enum EndpointProbe {
                     verdict: .unreachable,
                     status: nil,
                     latency: latency,
-                    detail: "响应不是 HTTP 响应。"
+                    detail: L10n.Probe.notHTTP
                 )
             }
             return EndpointProbeResult(
@@ -196,22 +212,20 @@ enum EndpointProbe {
         let explanation: String
         switch verdict(for: status) {
         case .healthy:
-            explanation = "端点可达，路由与凭据都正常。"
+            explanation = L10n.Probe.healthyDetail
         case .needsAuth:
-            explanation = "路由存在，但凭据被拒绝——检查 API Key。"
+            explanation = L10n.Probe.needsAuthDetail
         case .badRoute:
-            explanation = app == .claude
-                ? "路由不存在。Claude Code 会把这个 404 报成「模型不可用」。确认 Base URL 没有多余的 /v1。"
-                : "路由不存在。Codex 按 wire_api = \"responses\" 请求 <Base URL>/responses。"
+            explanation = app == .claude ? L10n.Probe.badRouteClaude : L10n.Probe.badRouteCodex
         case .unsupported:
-            explanation = "网关不接受这个协议的请求，该供应商无法用于 \(app.title)。"
+            explanation = L10n.Probe.unsupportedDetail(app.title)
         case .rejected:
-            explanation = "网关拒绝了请求。"
+            explanation = L10n.Probe.rejectedDetail
         case .unreachable:
-            explanation = "无法连接。"
+            explanation = L10n.Probe.unreachableDetail
         }
         guard let server = serverMessage(in: body), !server.isEmpty else { return explanation }
-        return "\(explanation) 服务端：\(server)"
+        return L10n.Probe.withServerMessage(explanation, server)
     }
 
     /// Pulls the human-readable error out of the usual shapes:
@@ -241,18 +255,18 @@ enum EndpointProbe {
         guard let urlError = error as? URLError else { return error.localizedDescription }
         switch urlError.code {
         case .timedOut:
-            return "请求超时（\(Int(timeout)) 秒内没有响应）。"
+            return L10n.Probe.timedOut(Int(timeout))
         case .cannotFindHost, .dnsLookupFailed:
-            return "域名解析失败，检查主机名。"
+            return L10n.Probe.dnsFailed
         case .cannotConnectToHost:
-            return "无法建立连接，检查地址与端口。"
+            return L10n.Probe.cannotConnect
         case .notConnectedToInternet:
-            return "当前没有网络连接。"
+            return L10n.Probe.offline
         case .appTransportSecurityRequiresSecureConnection:
-            return "系统策略阻止了明文 HTTP 请求。"
+            return L10n.Probe.atsBlocked
         case .secureConnectionFailed, .serverCertificateUntrusted,
              .serverCertificateHasBadDate, .serverCertificateNotYetValid:
-            return "TLS 握手失败或证书不受信任。"
+            return L10n.Probe.tlsFailed
         default:
             return urlError.localizedDescription
         }
