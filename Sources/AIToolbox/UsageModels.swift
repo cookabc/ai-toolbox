@@ -6,7 +6,7 @@ import Foundation
 /// two logs disagree on this — Codex reports the whole prompt and marks the cached
 /// share inside it, Claude Code reports only the uncached part and lists the cache
 /// separately — so the readers normalise to one meaning before anything is added up.
-/// Without that, the same "输入" number would mean different things in the two tabs.
+/// Without that, the same "Input" number would mean different things in the two tabs.
 struct UsageTotals: Equatable, Sendable {
     var requests: Int64 = 0
     var turns: Int64 = 0
@@ -92,29 +92,36 @@ struct UsageSnapshot: Equatable, Sendable {
 enum Format {
     /// A token count in the interface language's own large-number units.
     ///
-    /// Chinese groups large numbers by 万 (10⁴) and 亿 (10⁸), not by thousands, so
-    /// 127,000 reads 12.7万 rather than 127k. Below 万 the number is shown in full.
+    /// English groups large numbers by thousands, so 127,000 reads 127K. Below
+    /// 10,000 the number is shown in full — the cutoff is deliberately not lowered
+    /// to 1,000: that would put four-digit values on the three-significant-digit
+    /// rule below, and 9,999 would read "10.0K", a real 9,999 shown as if it were
+    /// 10,000. The exact count is in the tooltip and the VoiceOver label anyway.
     /// Compact values keep three significant digits, the same precision the panel
-    /// has always shown; the exact count is in the tooltip and the VoiceOver label.
+    /// has always shown.
     static func token(_ value: Int64) -> String {
         let magnitude = value.magnitude
         guard magnitude >= 10_000 else { return exact(value) }
         let sign = value < 0 ? "-" : ""
         // Each tier keeps three significant digits. Rounding can carry a value into
-        // the next tier (99,995 is 10.0万, not 10.00万), so the tier is chosen from the
-        // rounded value rather than the raw one.
-        let tiers: [(divisor: Double, unit: String)] = [(1e4, "万"), (1e8, "亿")]
+        // the next tier (999,500 is 1.00M, not 1000K), so the tier is chosen from the
+        // rounded value rather than the raw one. The last tier has nothing above it,
+        // so a large enough value keeps its digits instead of carrying (1e15 is
+        // 1000T); that wart predates this tier set and is left as it is.
+        let tiers: [(divisor: Double, unit: String)] = [(1e3, "K"), (1e6, "M"), (1e9, "B"), (1e12, "T")]
         for (index, tier) in tiers.enumerated() {
             let scaled = Double(magnitude) / tier.divisor
             let isLast = index == tiers.count - 1
-            if !isLast, scaled >= 9_999.5 { continue }
+            if !isLast, scaled >= 999.5 { continue }
             let digits = scaled < 9.995 ? 2 : scaled < 99.95 ? 1 : 0
             return sign + String(format: "%.\(digits)f", locale: posix, scaled) + tier.unit
         }
         return exact(value)
     }
 
-    /// A count of things (requests, turns, tool calls): exact below 万, compact above.
+    /// A count of things (requests, turns, tool calls): exact below 10,000, compact
+    /// above. The threshold matches `token`'s, so the two agree on where compacting
+    /// starts.
     static func count(_ value: Int64) -> String {
         value.magnitude >= 10_000 ? token(value) : exact(value)
     }
@@ -126,26 +133,48 @@ enum Format {
 
     static var locale: Locale { L10n.locale }
 
-    /// Decimal separators inside compact numbers are always ".", which zh-Hans also
-    /// uses; `String(format:)` would otherwise follow the process locale.
+    /// Decimal separators inside compact numbers are always ".", so a region that
+    /// writes decimals with a comma cannot turn 1.5K into 1,5K; `String(format:)`
+    /// would otherwise follow the process locale.
     private static let posix = Locale(identifier: "en_US_POSIX")
 
+    /// The day-of-week label over a trend column. `.short` (Tu) rather than
+    /// `.narrow` (T): an English narrow form is ambiguous — T is both Tuesday and
+    /// Thursday, S both Saturday and Sunday — and the columns are far wider than
+    /// the numbers above the bars, so the extra character costs nothing.
     static func weekday(_ date: Date) -> String {
-        date.formatted(.dateTime.weekday(.narrow).locale(locale))
+        date.formatted(.dateTime.weekday(.short).locale(locale))
     }
 
+    /// Drawn in pixel type beside the lifetime card's title, so it goes through
+    /// `pixelSpaced` too; `monthDay` below never reaches the pixel font, so it does
+    /// not need to.
     static func day(_ date: Date) -> String {
-        date.formatted(.dateTime.year().month().day().locale(locale))
+        pixelSpaced(date.formatted(.dateTime.year().month().day().locale(locale)))
     }
 
     static func monthDay(_ date: Date) -> String {
         date.formatted(.dateTime.month().day().weekday(.abbreviated).locale(locale))
     }
 
+    /// Drawn in pixel type in the panel header, so it is passed through
+    /// `pixelSpaced` first.
     static func time(_ date: Date, withDate: Bool) -> String {
-        withDate
-            ? date.formatted(.dateTime.month().day().hour().minute().locale(locale))
-            : date.formatted(.dateTime.hour().minute().locale(locale))
+        pixelSpaced(
+            withDate
+                ? date.formatted(.dateTime.month().day().hour().minute().locale(locale))
+                : date.formatted(.dateTime.hour().minute().locale(locale)))
+    }
+
+    /// Replaces the no-break spaces Foundation puts in an English time — the narrow
+    /// no-break space (U+202F) before "PM", or a plain no-break space (U+00A0) on
+    /// older systems — with ordinary spaces. The pixel font draws a plain space but
+    /// neither no-break variant, so without this the header stamp would fall back to
+    /// the system font for that one character and the word spacing would change
+    /// mid-line.
+    private static func pixelSpaced(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 
     static func percent(_ value: Double) -> String {
