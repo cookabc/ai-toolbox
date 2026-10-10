@@ -1,3 +1,16 @@
-Generated with the built-in image-generation tool using the imagegen skill.
+The app icon is pixel art drawn in code, not generated from a prompt.
 
-Use case: logo-brand. Asset type: production macOS application icon, square 1024x1024 PNG with genuine transparent background outside the icon. Create one polished native macOS icon for an app called AI Toolbox (AI 工具台), a private local token-usage monitor and provider switcher for Codex and Claude Code. No text or lettering. One centered rounded-square tile occupying about 84% of canvas, smooth deep midnight-blue surface with restrained depth and softly beveled corners. Inside, a distinctive simple usage-meter mark: three thick softly rounded vertical bars rising left to right, cyan through blue to violet, united visually as one compact symbol. Crisp silhouette legible at small sizes. Subtle luminous glass/enamel finish and controlled highlights, tasteful native desktop utility aesthetic matching a blue/cyan/indigo SwiftUI analytics interface. Straight-on orthographic view, perfectly centered, generous consistent padding, transparent exterior, no backdrop, no extra objects, no mockup, no chart axes, no numbers, no watermark, no tiny details. Deliver the icon artwork itself.
+Source: AppIconArt in Sources/AIToolbox/PixelArt.swift — a 32 × 32 cell design
+(a 16 × 16 variant for the 16-pixel slot): midnight-navy bands joined by dithered
+seams, three shaded bars in cyan, blue and violet on a floor line, and a spark.
+The same bars are the header mark (PixelArt.appMark) and the menu-bar template
+(PixelArt.menuBarMark), so the three read as one product.
+
+It is full-bleed and opaque on purpose: since macOS 26 the system masks such an
+icon to its standard shape, while an icon with a transparent margin is shrunk onto
+a grey plate.
+
+Regenerate AppIcon.png and AppIcon.iconset/ (every slot drawn at a whole number of
+pixels per cell) with:
+
+    USAGE_RENDER_ICON=1 swift test --filter DocumentationRenderTests/testRenderAppIcon

@@ -9,26 +9,35 @@ mkdir -p dist
 package_dir="$(mktemp -d "$project_root/dist/.package.XXXXXX")"
 trap 'rm -rf "$package_dir"' EXIT
 app_dir="$package_dir/AIToolbox.app"
-mkdir -p "$app_dir/Contents/MacOS"
-mkdir -p "$app_dir/Contents/Resources" "$package_dir/AppIcon.iconset"
-for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" Assets/AppIcon.png --out "$package_dir/AppIcon.iconset/icon_${size}x${size}.png" >/dev/null
-    double_size=$((size * 2))
-    sips -z "$double_size" "$double_size" Assets/AppIcon.png --out "$package_dir/AppIcon.iconset/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$package_dir/AppIcon.iconset" -o "$app_dir/Contents/Resources/AppIcon.icns"
+mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
+
+# The icon is pixel art: every slot of the iconset is drawn at a whole number of
+# pixels per cell (USAGE_RENDER_ICON=1 swift test --filter testRenderAppIcon).
+# Resampling one large PNG would blur the small sizes, so the slots are used as-is.
+iconutil -c icns Assets/AppIcon.iconset -o "$app_dir/Contents/Resources/AppIcon.icns"
+
 cp "$binary_dir/AIToolbox" "$app_dir/Contents/MacOS/AIToolbox"
 resource_bundle="$binary_dir/AIToolbox_AIToolbox.bundle"
-if [[ -d "$resource_bundle" ]]; then
-    # SwiftPM emits a macOS-style bundle (Contents/Resources) on current toolchains
-    # and a flat one on older releases; pick whichever actually holds the icons.
-    resource_root="$resource_bundle"
-    if [[ -d "$resource_bundle/Contents/Resources" ]]; then
-        resource_root="$resource_bundle/Contents/Resources"
-    fi
-    cp "$resource_root"/BrandClaude.svg "$app_dir/Contents/Resources/"
-    cp "$resource_root"/BrandCodex.svg "$app_dir/Contents/Resources/"
+# SwiftPM emits a macOS-style bundle (Contents/Resources) on current toolchains
+# and a flat one on older releases; pick whichever actually holds the files.
+resource_root="$resource_bundle"
+if [[ -d "$resource_bundle/Contents/Resources" ]]; then
+    resource_root="$resource_bundle/Contents/Resources"
 fi
+# The pixel font and its licence. The app falls back to the system font without
+# it, so a missing file would ship silently — fail the build instead.
+font="ark-pixel-12px-proportional-zh_hans.woff2"
+if [[ ! -f "$resource_root/$font" ]]; then
+    printf 'Missing %s in %s\n' "$font" "$resource_root" >&2
+    exit 1
+fi
+cp "$resource_root/$font" "$resource_root/ArkPixel-OFL.txt" "$app_dir/Contents/Resources/"
+
+# The interface's only localization (see CFBundleLocalizations in Info.plist).
+mkdir -p "$app_dir/Contents/Resources/zh-Hans.lproj"
+printf '/* The interface is Simplified Chinese; see L10n.swift. */\n' \
+    > "$app_dir/Contents/Resources/zh-Hans.lproj/InfoPlist.strings"
+
 cp Info.plist "$app_dir/Contents/Info.plist"
 codesign --force --sign - "$app_dir"
 codesign --verify --strict "$app_dir"
