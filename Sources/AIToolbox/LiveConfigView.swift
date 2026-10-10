@@ -385,7 +385,7 @@ private struct OfficialLoginCard: View {
 }
 
 /// Which entry is live, as a row of keys: the live one is pressed in — sunk two
-/// points, lit, no shadow — and every other one is a raised "切换" key. Exactly one
+/// points, lit, no shadow — and every other one is a raised "Switch" key. Exactly one
 /// is pressed at a time, like a radio button made of keycaps.
 private struct ProviderSwitch: View {
   let isActive: Bool

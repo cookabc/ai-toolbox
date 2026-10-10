@@ -109,13 +109,13 @@ final class DocumentationRenderTests: XCTestCase {
     // Forms.
     let createCodex = LiveConfigViewModel.documentation(app: .codex)
     createCodex.beginCreate()
-    createCodex.draftName = "公司网关"
+    createCodex.draftName = "Company gateway"
     createCodex.draftBaseURL = "https://gateway.company.test/v1"
     try await render(panel(model: usage, tool: .codex, config: createCodex), dark: false, to: file("draft-create-codex-light"))
 
     let createClaude = LiveConfigViewModel.documentation(app: .claude)
     createClaude.beginCreate()
-    createClaude.draftName = "中转站"
+    createClaude.draftName = "Relay gateway"
     createClaude.draftModel = "claude-sonnet-4"
     createClaude.draftCredential = .authToken
     try await render(
@@ -340,7 +340,7 @@ private struct HeroArtwork<Panel: View>: View {
       VStack(alignment: .leading, spacing: 0) {
         HStack(spacing: 8) {
           PixelLamp(color: Ink.brandCyan)
-          Text("本地用量 · 菜单栏工具")
+          Text("Local usage · menu bar tool")
             .font(.pixel())
             .foregroundStyle(Ink.brandCyan)
         }
@@ -350,7 +350,7 @@ private struct HeroArtwork<Panel: View>: View {
         Text(L10n.App.title)
           .font(.pixel(4))
           .foregroundStyle(.white)
-        Text("用量与配置，\n尽在菜单栏。")
+        Text("Usage and config,\nright in the menu bar.")
           .font(.pixel(2))
           .lineSpacing(6)
           .foregroundStyle(Color.white.opacity(0.86))
@@ -363,16 +363,16 @@ private struct HeroArtwork<Panel: View>: View {
         }
         .frame(height: 6)
         .padding(.vertical, 30)
-        Text("Codex 与 Claude Code 的本地用量、趋势和供应商配置，收进一个原生 macOS 面板。")
+        Text("Codex and Claude Code usage, trends and provider configuration, in one native macOS panel.")
           .font(.system(size: 16))
           .lineSpacing(5)
           .foregroundStyle(Color.white.opacity(0.74))
           .fixedSize(horizontal: false, vertical: true)
         Spacer(minLength: 24)
         HStack(spacing: 20) {
-          feature(.usage, "本机日志统计")
-          feature(.swap, "一键切换供应商")
-          feature(.save, "原子写入与备份")
+          feature(.usage, "Local logs")
+          feature(.swap, "One-click switch")
+          feature(.save, "Atomic writes")
         }
         .foregroundStyle(Color.white.opacity(0.78))
       }

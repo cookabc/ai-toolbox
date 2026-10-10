@@ -83,7 +83,7 @@ final class UsageViewModelTests: XCTestCase {
         model.refresh()
         try await waitUntil { !model.isRefreshing }
         XCTAssertNil(model.today())
-        XCTAssertEqual(model.statusText, "Codex 今日输出暂无")
+        XCTAssertEqual(model.statusText, "Codex, no output today")
         XCTAssertNotNil(model.sourceWarning(.codex))
         XCTAssertEqual(model.snapshot?.totals, old.totals)
     }
@@ -120,7 +120,7 @@ final class UsageViewModelTests: XCTestCase {
         let model = UsageViewModel(loader: { fixture })
         model.refresh()
         try await waitUntil { !model.isRefreshing }
-        XCTAssertEqual(model.statusText, "Codex 今日输出 1,000")
+        XCTAssertEqual(model.statusText, "Codex, 1,000 output today")
         XCTAssertTrue(model.sourceWarning(.codex)?.contains("3") == true)
     }
 

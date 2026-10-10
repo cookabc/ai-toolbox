@@ -593,7 +593,7 @@ extension LiveConfigViewModel {
             StoredProvider(
                 id: relayID,
                 app: .codex,
-                name: "中转网关",
+                name: "Relay gateway",
                 slug: "relay-api",
                 baseURL: "https://relay.example/v1",
                 model: "gpt-5",
@@ -602,7 +602,7 @@ extension LiveConfigViewModel {
             StoredProvider(
                 id: claudeID,
                 app: .claude,
-                name: "公司网关",
+                name: "Company gateway",
                 slug: "company-gateway",
                 baseURL: "https://api.company.test/v1",
                 model: "claude-sonnet-4",
@@ -619,7 +619,7 @@ extension LiveConfigViewModel {
                     CodexTomlEditor.builtInOpenAI,
                     CodexProviderRecord(
                         id: "relay-api",
-                        name: "中转网关",
+                        name: "Relay gateway",
                         baseURL: "https://relay.example/v1",
                         hasAPIKey: true,
                         maskedAPIKey: SecretDisplay.mask("sk-doc-relay-key"),
@@ -673,12 +673,12 @@ extension LiveConfigViewModel {
         switch scenario {
         case .crowded:
             let failing = StoredProvider(
-                app: app, name: "备用中转", slug: "backup-relay",
+                app: app, name: "Backup relay", slug: "backup-relay",
                 baseURL: "https://backup.example/v1/",
                 model: app == .codex ? "gpt-5-codex" : "claude-opus-4",
                 apiKey: "sk-doc-backup-key", credential: .authToken)
             let idle = StoredProvider(
-                app: app, name: "本地网关（实验）", slug: "local-lab",
+                app: app, name: "Local gateway (experimental)", slug: "local-lab",
                 baseURL: "http://192.168.1.20:8080/v1", model: "", apiKey: "")
             providers += [failing, idle]
             probeStates[failing.id] = .done(EndpointProbeResult(
@@ -701,7 +701,7 @@ extension LiveConfigViewModel {
         case .unreadable:
             libraryReadError = L10n.Config.libraryUnreadable(
                 path: "~/Library/Application Support/AIToolbox/providers.json",
-                reason: "数据格式不正确。")
+                reason: "The data format is invalid.")
             messages[app] = Message(text: LiveConfigError.libraryUnreadable.localizedDescription, isError: true)
         case .official:
             providers.removeAll { $0.app == app }

@@ -290,7 +290,11 @@ struct UsagePopoverView: View {
           .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
       }
-      .frame(width: 236, height: 32)
+      // Both wells are sized to their longest label, which the two tabs share
+      // equally: "Claude Code" here, "Config" there. The two widths together with
+      // the row's gaps and padding come to `panelWidth` exactly, so a wider label
+      // needs this pair rebalanced rather than one of them widened.
+      .frame(width: 216, height: 32)
       .accessibilityElement(children: .contain)
       .accessibilityLabel(L10n.Header.toolPicker)
 
@@ -306,7 +310,7 @@ struct UsagePopoverView: View {
           showsConfig = true
         }
       }
-      .frame(width: 128, height: 32)
+      .frame(width: 144, height: 32)
       .accessibilityElement(children: .contain)
       .accessibilityLabel(L10n.Header.modePicker)
     }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The edits AI 工具台 makes to `~/.codex/config.toml`, as pure text-to-text
+/// The edits AI Toolbox makes to `~/.codex/config.toml`, as pure text-to-text
 /// functions. Every edit goes through `TomlDocument`, so it touches only the keys it
 /// names and refuses a file it cannot parse instead of guessing at it.
 enum CodexTomlEditor {

@@ -6,7 +6,7 @@ final class LiveConfigTests: XCTestCase {
     func testMaskShowsOnlyTheEndOfLongKeys() {
         XCTAssertEqual(SecretDisplay.mask("sk-abcdefghijk"), "••••hijk")
         XCTAssertEqual(SecretDisplay.mask("short"), "••••", "a short key would be half revealed")
-        XCTAssertEqual(SecretDisplay.mask(""), "未设置")
+        XCTAssertEqual(SecretDisplay.mask(""), "Not set")
     }
 
     func testClaudeClearRemovesTheOverlayAndProviderKeysOnly() throws {
@@ -247,7 +247,7 @@ final class LiveConfigTests: XCTestCase {
         XCTAssertFalse(try fixture.codexText().contains("anexto"), "saving is not switching")
 
         model.app = .claude
-        XCTAssertNil(model.statusMessage, "Codex 的结果不应显示在 Claude Code 标签下")
+        XCTAssertNil(model.statusMessage, "a Codex result must not show under the Claude Code tab")
         model.app = .codex
         XCTAssertNotNil(model.statusMessage)
     }
@@ -307,7 +307,7 @@ final class LiveConfigTests: XCTestCase {
         XCTAssertEqual(model.providers.map(\.slug), ["a"])
     }
 
-    /// Editing the provider that is live and pressing "保存" must not leave the live
+    /// Editing the provider that is live and pressing "Save" must not leave the live
     /// config running on the values that were just replaced.
     @MainActor
     func testEditingTheActiveProviderUpdatesTheLiveConfig() async throws {
@@ -437,7 +437,7 @@ final class LiveConfigTests: XCTestCase {
         await model.waitUntilIdle()
 
         XCTAssertNil(model.errorMessage)
-        XCTAssertTrue(model.statusMessage?.contains("官方模型目录") == true)
+        XCTAssertTrue(model.statusMessage?.contains("official model catalog") == true)
         let config = try fixture.codexText()
         XCTAssertNil(CodexTomlEditor.rootString(config, key: CodexTomlEditor.modelCatalogKey))
         XCTAssertEqual(try CodexTomlEditor.load(config).model, "deepseek-v4.1-flash")
@@ -501,7 +501,7 @@ final class LiveConfigTests: XCTestCase {
         let model = fixture.model()
         model.app = .codex
         guard case .unreadable(let message) = model.codexState else { return XCTFail("expected unreadable") }
-        XCTAssertTrue(message.contains("第 2 行"))
+        XCTAssertTrue(message.contains("Line 2"))
         model.activate(provider)
         await model.waitUntilIdle()
         XCTAssertNotNil(model.errorMessage)
@@ -601,14 +601,14 @@ final class LiveConfigTests: XCTestCase {
     func testDeletingAProviderWaitsForConfirmation() async throws {
         let fixture = try Fixture()
         let provider = StoredProvider(
-            app: .claude, name: "公司网关", slug: "company", baseURL: "https://relay.test", model: "m", apiKey: "k")
+            app: .claude, name: "Company gateway", slug: "company", baseURL: "https://relay.test", model: "m", apiKey: "k")
         try fixture.library.save([provider])
         let model = fixture.model()
         model.app = .claude
 
         model.requestDelete(provider)
         XCTAssertEqual(model.pendingConfirmation, .deleteProvider(provider))
-        XCTAssertEqual(model.pendingConfirmation?.title, "删除供应商「公司网关」？")
+        XCTAssertEqual(model.pendingConfirmation?.title, "Delete provider \"Company gateway\"?")
         XCTAssertEqual(model.pendingConfirmation?.message, L10n.Config.deleteClaudeMessage)
         await model.waitUntilIdle()
         XCTAssertEqual(try fixture.library.load().count, 1, "asking deletes nothing")
@@ -622,7 +622,7 @@ final class LiveConfigTests: XCTestCase {
         XCTAssertNil(model.pendingConfirmation, "the dialog closes as the action starts")
         await model.waitUntilIdle()
         XCTAssertTrue(try fixture.library.load().isEmpty)
-        XCTAssertEqual(model.statusMessage, "已删除「公司网关」")
+        XCTAssertEqual(model.statusMessage, "Deleted \"Company gateway\"")
     }
 
     /// The Claude Code "official login" entry is live exactly when settings.json

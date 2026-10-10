@@ -57,7 +57,7 @@ final class CodexModelCatalogTests: XCTestCase {
         let relay = try XCTUnwrap(models.first)
         XCTAssertEqual(relay["slug"] as? String, "deepseek-v4.1-flash")
         XCTAssertEqual(relay["display_name"] as? String, "deepseek-v4.1-flash")
-        XCTAssertEqual(relay["description"] as? String, "由 ARouter 提供")
+        XCTAssertEqual(relay["description"] as? String, "Provided by ARouter")
         XCTAssertEqual(relay["visibility"] as? String, "list")
         XCTAssertEqual(relay["supported_in_api"] as? Bool, true)
         // Metadata comes from the official entry, so Codex stops falling back.
@@ -93,7 +93,7 @@ final class CodexModelCatalogTests: XCTestCase {
 
         XCTAssertEqual(relay["base_instructions"] as? String, "Be brief.")
         XCTAssertEqual(relay["context_window"] as? Int, CodexModelCatalog.defaultContextWindow)
-        XCTAssertEqual(relay["description"] as? String, "由 k3 提供")
+        XCTAssertEqual(relay["description"] as? String, "Provided by k3")
     }
 
     func testMissingOfficialCatalogIsReported() throws {
@@ -102,7 +102,7 @@ final class CodexModelCatalogTests: XCTestCase {
             XCTAssertEqual(error as? LiveConfigError, .missingModelCatalog(url))
         }
         XCTAssertThrowsError(try CodexModelCatalog.make(providerName: "ARouter", model: "  ", officialCatalog: url)) { error in
-            XCTAssertEqual(error as? LiveConfigError, .missingField("模型"))
+            XCTAssertEqual(error as? LiveConfigError, .missingField("Model"))
         }
     }
 

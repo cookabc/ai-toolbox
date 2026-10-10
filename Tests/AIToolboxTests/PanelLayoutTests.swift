@@ -376,7 +376,7 @@ final class PanelLayoutTests: XCTestCase {
   /// The header spinner used to rotate via
   /// `withAnimation(…repeatForever(autoreverses: false))` started in `onAppear`. An
   /// endless animation never completes, so it was still in flight when the refresh
-  /// inserted the "· 正在刷新…" subtitle and re-laid-out the chrome around it — and
+  /// inserted the "Reading…" subtitle and re-laid-out the chrome around it — and
   /// those views inherited it and slid upward forever. It survived closing and
   /// reopening the panel and cleared only on relaunch, which is what identified it.
   /// Measured before the fix: **26** layers moving, the title and both tool tabs among

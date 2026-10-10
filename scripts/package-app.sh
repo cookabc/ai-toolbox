@@ -26,7 +26,7 @@ if [[ -d "$resource_bundle/Contents/Resources" ]]; then
 fi
 # The pixel font and its licence. The app falls back to the system font without
 # it, so a missing file would ship silently — fail the build instead.
-font="ark-pixel-12px-proportional-zh_hans.woff2"
+font="ark-pixel-12px-proportional-latin.woff2"
 if [[ ! -f "$resource_root/$font" ]]; then
     printf 'Missing %s in %s\n' "$font" "$resource_root" >&2
     exit 1
@@ -34,9 +34,9 @@ fi
 cp "$resource_root/$font" "$resource_root/ArkPixel-OFL.txt" "$app_dir/Contents/Resources/"
 
 # The interface's only localization (see CFBundleLocalizations in Info.plist).
-mkdir -p "$app_dir/Contents/Resources/zh-Hans.lproj"
-printf '/* The interface is Simplified Chinese; see L10n.swift. */\n' \
-    > "$app_dir/Contents/Resources/zh-Hans.lproj/InfoPlist.strings"
+mkdir -p "$app_dir/Contents/Resources/en.lproj"
+printf '/* The interface is English; see L10n.swift. */\n' \
+    > "$app_dir/Contents/Resources/en.lproj/InfoPlist.strings"
 
 cp Info.plist "$app_dir/Contents/Info.plist"
 codesign --force --sign - "$app_dir"

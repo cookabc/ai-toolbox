@@ -47,7 +47,7 @@ struct ClaudeLiveSettings: Equatable, Sendable {
     var maskedAPIKey: String
     var credential: ClaudeCredential
     /// Values currently set in `settings.json` for the keys a provider is allowed
-    /// to own. Read back so "导入当前配置" can capture a working setup in full.
+    /// to own. Read back so the "Import" action can capture a working setup in full.
     var extraEnv: [String: String]
 
     init(
@@ -141,7 +141,7 @@ enum ProviderIDRules {
 struct LiveConfigPaths: Sendable {
     var claudeSettings: URL
     var codexConfig: URL
-    /// The catalog AI 工具台 publishes for the active Codex provider, and the
+    /// The catalog AI Toolbox publishes for the active Codex provider, and the
     /// official catalog Codex downloaded for itself. The second is what supplies
     /// the system prompt every published entry has to carry, so both live beside
     /// the `config.toml` they belong to.

@@ -127,7 +127,7 @@ final class PerProviderConfigTests: XCTestCase {
 
     // MARK: - Reading and storage
 
-    /// What "导入当前配置" relies on: the aliases already in settings.json come back
+    /// What the "Import" action relies on: the aliases already in settings.json come back
     /// as the provider's own keys, so importing a working setup keeps it working.
     func testLoadCapturesPerProviderKeys() throws {
         let url = try uniqueURL()

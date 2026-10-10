@@ -6,8 +6,8 @@ import XCTest
 
 /// The pixel design system's guarantees: whole-point geometry that does not
 /// distort data, glyphs on their grids, a full-bleed icon, a bundled font that
-/// covers every string the interface shows, copy without stray English, and inks
-/// that meet the contrast minimums.
+/// draws every string the interface shows, copy with no untranslated Chinese left
+/// in it, and inks that meet the contrast minimums.
 @MainActor
 final class PixelDesignTests: XCTestCase {
   // MARK: - Chart geometry
@@ -163,24 +163,40 @@ final class PixelDesignTests: XCTestCase {
 
   // MARK: - Font and copy
 
-  func testPixelFontIsBundledAndRegisters() {
+  func testPixelFontIsBundledAndRegisters() throws {
     XCTAssertTrue(PixelFont.isAvailable, "the pixel font must load from the resource bundle")
-    XCTAssertNotNil(NSFont(name: PixelFont.postScriptName, size: PixelFont.designSize))
+    // The bundled file and `PixelFont.postScriptName` have to agree. Registering
+    // *some* font is not enough: swapping the resource without the name would leave
+    // `.pixel()` silently falling back to the system font throughout the panel.
+    let font = try XCTUnwrap(NSFont(name: PixelFont.postScriptName, size: PixelFont.designSize))
+    XCTAssertEqual(font.fontName, "Ark-Pixel-12px-Prop-latin-Regular")
     XCTAssertNotNil(AppResources.url("ArkPixel-OFL", "txt"), "the licence ships with the font")
+
+    // The punctuation the English copy mixes into pixel-type labels. A gap here
+    // would fall back to another face mid-label; the fix is to pick a different
+    // character or an SF Symbol, never to drop this check.
+    let required = "⌘…—·,"
+    let characterSet = try XCTUnwrap(PixelFont.characterSet)
+    let missing = required.filter { !$0.unicodeScalars.allSatisfy(characterSet.contains) }
+    XCTAssertTrue(missing.isEmpty, "the pixel font cannot draw: \(missing)")
   }
 
-  /// Every character of every label is drawn by the pixel font itself, so no label
-  /// falls back to another face mid-word. Sentences (anything with a 。) are running
-  /// text in the system font and are exempt; see `L10n`.
-  func testInterfaceLabelsAreCoveredByThePixelFont() throws {
+  /// Every character of every interface string is drawn by the pixel font itself,
+  /// so nothing falls back to another face mid-word. The running text that views
+  /// set in the system font is checked too: it costs nothing, and it keeps a stray
+  /// ideograph or an exotic space from sitting unnoticed inside a string that a
+  /// later view renders in pixel type. See `L10n`.
+  func testInterfaceCopyIsCoveredByThePixelFont() throws {
     let font = try XCTUnwrap(PixelFont.characterSet)
     let numbers = [0, 7, 999, 1_260, 99_995, 127_000, 3_700_000, 99_995_000, 2_500_000_000]
       .map { Format.token(Int64($0)) }
-    let dates = [Format.time(Date(), withDate: true), Format.day(Date()), Format.monthDay(Date())]
-      + (0..<7).map { Format.weekday(Date().addingTimeInterval(Double($0) * 86_400)) }
+    let dates = [
+      Format.time(Date(), withDate: true), Format.time(Date(), withDate: false),
+      Format.day(Date()), Format.monthDay(Date()),
+    ] + (0..<7).map { Format.weekday(Date().addingTimeInterval(Double($0) * 86_400)) }
     var missing: [String: Set<Character>] = [:]
-    let labels = try interfaceLiterals().filter { !$0.contains("。") }
-    XCTAssertGreaterThan(labels.count, 80)
+    let labels = try interfaceLiterals()
+    XCTAssertGreaterThan(labels.count, 150)
     for text in labels + numbers + dates + [Format.percent(0.86)] {
       for character in text where !character.isWhitespace {
         let scalars = character.unicodeScalars
@@ -190,31 +206,31 @@ final class PixelDesignTests: XCTestCase {
     XCTAssertTrue(missing.isEmpty, "characters the pixel font cannot draw: \(missing)")
   }
 
-  /// Ordinary words are Chinese. Latin text is limited to names, identifiers and
-  /// units the user reads elsewhere verbatim; anything else is untranslated copy.
-  func testInterfaceCopyHasNoUntranslatedWords() throws {
-    let allowed: Set<String> = [
-      // Products and companies
-      "AI", "Toolbox", "Codex", "Claude", "Code", "OpenAI", "Anthropic", "ChatGPT", "Console", "Mac",
-      // Keyboard shortcuts
-      "R", "Q",
-      // Protocols, formats and units
-      "API", "HTTP", "http", "https", "TLS", "JSON", "UTF", "TOML", "ms", "token", "ID", "Bearer",
-      // Files, paths, keys and fields the user types or finds on disk
-      "auth", "json", "config", "toml", "settings", "codex", "claude", "env", "Library", "Application",
-      "Support", "providers", "model", "providers", "catalog", "wire", "api", "responses", "v",
-      "ANTHROPIC", "KEY", "AUTH", "TOKEN", "x", "key", "Authorization", "openai", "ollama", "lmstudio",
-      // Placeholder examples
-      "sk", "company", "gateway",
-    ]
-    var stray: [String: Set<String>] = [:]
-    for text in try interfaceLiterals() {
-      let words = text.split { !$0.isASCII || !($0.isLetter) }.map(String.init)
-      for word in words where !allowed.contains(word) {
-        stray[text, default: []].insert(word)
+  /// The copy is English, so no interface string may still hold a CJK character.
+  /// A leftover would render in the system font while the text around it is pixel
+  /// type — the visible half-translation this file exists to catch.
+  func testInterfaceCopyHasNoChineseRemainder() throws {
+    func isCJK(_ scalar: Unicode.Scalar) -> Bool {
+      switch scalar.value {
+      case 0x2E80...0x2EFF,  // CJK Radicals Supplement
+           0x3000...0x303F,  // CJK Symbols and Punctuation
+           0x3040...0x30FF,  // Hiragana and Katakana
+           0x3400...0x4DBF,  // CJK Unified Ideographs Extension A
+           0x4E00...0x9FFF,  // CJK Unified Ideographs
+           0xF900...0xFAFF,  // CJK Compatibility Ideographs
+           0xFE30...0xFE4F,  // CJK Compatibility Forms
+           0xFF00...0xFFEF:  // Halfwidth and Fullwidth Forms
+        return true
+      default:
+        return false
       }
     }
-    XCTAssertTrue(stray.isEmpty, "untranslated words in the interface copy: \(stray)")
+    var stray: [String: Set<String>] = [:]
+    for text in try interfaceLiterals() {
+      let found = text.unicodeScalars.filter(isCJK)
+      if !found.isEmpty { stray[text] = Set(found.map(String.init)) }
+    }
+    XCTAssertTrue(stray.isEmpty, "Chinese left in the interface copy: \(stray)")
   }
 
   /// The string literals in `L10n.swift`, with interpolations removed.
@@ -237,7 +253,7 @@ final class PixelDesignTests: XCTestCase {
       return stripped.replacingOccurrences(of: #"\""#, with: "\"")
     }
     // The formatting locale is an identifier, not copy.
-    let copy = literals.filter { $0 != "zh_Hans_CN" }
+    let copy = literals.filter { $0 != "en_US" }
     XCTAssertGreaterThan(copy.count, 150, "the scan must actually find the copy")
     return copy
   }
