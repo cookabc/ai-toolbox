@@ -24,16 +24,33 @@ final class UsageModelsTests: XCTestCase {
         XCTAssertEqual(overcounted.freshInputShare, 0)
     }
 
+    /// Chinese groups large numbers by 万 and 亿; below 万 the count is exact.
     func testReadableFormatting() {
         XCTAssertEqual(Format.token(999), "999")
-        XCTAssertEqual(Format.token(1_260), "1.3k")
-        XCTAssertEqual(Format.token(27_400), "27k")
-        XCTAssertEqual(Format.token(3_700_000), "3.7M")
-        XCTAssertEqual(Format.token(38_600_000), "39M")
-        XCTAssertEqual(Format.token(2_500_000_000), "2.50B")
+        XCTAssertEqual(Format.token(1_260), "1,260")
+        XCTAssertEqual(Format.token(9_999), "9,999")
+        XCTAssertEqual(Format.token(10_000), "1.00万")
+        XCTAssertEqual(Format.token(27_400), "2.74万")
+        XCTAssertEqual(Format.token(127_000), "12.7万")
+        XCTAssertEqual(Format.token(3_700_000), "370万")
+        XCTAssertEqual(Format.token(38_600_000), "3860万")
+        XCTAssertEqual(Format.token(2_500_000_000), "25.0亿")
+        XCTAssertEqual(Format.token(-27_400), "-2.74万")
         XCTAssertEqual(Format.count(999), "999")
-        XCTAssertEqual(Format.count(12_600), "13k")
+        XCTAssertEqual(Format.count(12_600), "1.26万")
+        XCTAssertEqual(Format.exact(1_234_567), "1,234,567")
         XCTAssertEqual(Format.percent(0.826), "83%")
+    }
+
+    /// Rounding can carry a value past a precision or unit boundary; the shown
+    /// number must still have three significant digits in the right unit.
+    func testCompactNumbersCarryAcrossBoundaries() {
+        XCTAssertEqual(Format.token(99_949), "9.99万")
+        XCTAssertEqual(Format.token(99_995), "10.0万")
+        XCTAssertEqual(Format.token(999_950), "100万")
+        XCTAssertEqual(Format.token(99_994_999), "9999万")
+        XCTAssertEqual(Format.token(99_995_000), "1.00亿")
+        XCTAssertEqual(Format.token(999_500_000), "10.0亿")
     }
 
     func testDaysAreLookedUpByLocalDateAndGapsAreFilled() {

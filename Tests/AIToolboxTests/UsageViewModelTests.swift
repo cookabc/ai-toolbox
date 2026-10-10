@@ -120,7 +120,7 @@ final class UsageViewModelTests: XCTestCase {
         let model = UsageViewModel(loader: { fixture })
         model.refresh()
         try await waitUntil { !model.isRefreshing }
-        XCTAssertEqual(model.statusText, "Codex 今日输出 1.0k")
+        XCTAssertEqual(model.statusText, "Codex 今日输出 1,000")
         XCTAssertTrue(model.sourceWarning(.codex)?.contains("3") == true)
     }
 

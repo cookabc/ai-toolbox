@@ -2,6 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- The interface is written in Simplified Chinese only. Declaring it as the
+       development region and sole localization makes the system pieces inside the
+       panel (text-field menus, Foundation's error messages) use the same language,
+       instead of following an English-first system language list. -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh-Hans</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>zh-Hans</string>
+  </array>
   <key>CFBundleDisplayName</key>
   <string>AI Toolbox</string>
   <key>CFBundleExecutable</key>

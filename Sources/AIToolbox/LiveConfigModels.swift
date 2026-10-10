@@ -27,8 +27,15 @@ enum ClaudeCredential: String, Codable, CaseIterable, Sendable {
 
     var label: String {
         switch self {
-        case .apiKey: "API Key"
-        case .authToken: "Auth Token"
+        case .apiKey: L10n.Config.credentialAPIKey
+        case .authToken: L10n.Config.credentialAuthToken
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .apiKey: L10n.Config.credentialAPIKeyHelp
+        case .authToken: L10n.Config.credentialAuthTokenHelp
         }
     }
 }
@@ -59,7 +66,7 @@ struct ClaudeLiveSettings: Equatable, Sendable {
         self.extraEnv = extraEnv
     }
 
-    static let empty = ClaudeLiveSettings(baseURL: "", model: "", hasAPIKey: false, maskedAPIKey: "未设置")
+    static let empty = ClaudeLiveSettings(baseURL: "", model: "", hasAPIKey: false, maskedAPIKey: L10n.Config.notSet)
 
     var hasOverlay: Bool { !baseURL.isEmpty || !model.isEmpty || hasAPIKey }
 }
@@ -98,22 +105,17 @@ enum LiveConfigError: LocalizedError, Equatable, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidProviderID: "供应商 ID 只能使用英文字母、数字、连字符和下划线，以字母开头，最长 32 个字符。"
-        case .reservedProviderID: "openai、ollama、lmstudio 是 Codex 内置 ID，不能用作自定义供应商。"
-        case .duplicateProviderID(let id): "已存在 ID 为 \(id) 的供应商。"
-        case .missingField(let name): "请填写\(name)。"
-        case .missingCodexHome: "未找到 ~/.codex 目录。请先运行一次 Codex，再回来切换供应商。"
-        case .missingModelCatalog(let url):
-            "Codex 还没有下载官方模型目录（\(url.path)）。目录条目必须自带系统指令，"
-                + "所以这次没有把模型发布到 Codex 的模型列表；用官方登录运行一次 Codex 后重新切换即可。"
-        case .unparseableCodexConfig(let line):
-            "~/.codex/config.toml 第 \(line) 行有无法解析的内容。为避免破坏配置，没有做任何修改。"
-        case .unsupportedCodexLayout(let id):
-            "config.toml 里的 \(id) 供应商不是用独立的 [model_providers.\(id)] 表定义的"
-                + "（例如写成了内联表或点号键）。为避免产生重复定义，没有修改它。"
-        case .notUTF8(let name): "\(name) 不是 UTF-8 文本，没有做任何修改。"
-        case .libraryUnreadable: "供应商库无法读取。为避免覆盖其中的内容，暂停保存供应商。"
-        case .writeFailed(let message): "写入配置失败：\(message)"
+        case .invalidProviderID: L10n.Errors.invalidProviderID
+        case .reservedProviderID: L10n.Errors.reservedProviderID
+        case .duplicateProviderID(let id): L10n.Errors.duplicateProviderID(id)
+        case .missingField(let name): L10n.Errors.missingField(name)
+        case .missingCodexHome: L10n.Errors.missingCodexHome
+        case .missingModelCatalog(let url): L10n.Errors.missingModelCatalog(url.path)
+        case .unparseableCodexConfig(let line): L10n.Errors.unparseableCodexConfig(line: line)
+        case .unsupportedCodexLayout(let id): L10n.Errors.unsupportedCodexLayout(id)
+        case .notUTF8(let name): L10n.Errors.notUTF8(name)
+        case .libraryUnreadable: L10n.Errors.libraryUnreadable
+        case .writeFailed(let message): L10n.Errors.writeFailed(message)
         }
     }
 }
@@ -121,7 +123,7 @@ enum LiveConfigError: LocalizedError, Equatable, Sendable {
 enum SecretDisplay {
     static func mask(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "未设置" }
+        guard !trimmed.isEmpty else { return L10n.Config.notSet }
         if trimmed.count <= 8 { return String(repeating: "•", count: min(trimmed.count, 4)) }
         return "••••\(trimmed.suffix(4))"
     }

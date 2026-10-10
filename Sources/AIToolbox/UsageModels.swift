@@ -90,23 +90,45 @@ struct UsageSnapshot: Equatable, Sendable {
 }
 
 enum Format {
+    /// A token count in the interface language's own large-number units.
+    ///
+    /// Chinese groups large numbers by 万 (10⁴) and 亿 (10⁸), not by thousands, so
+    /// 127,000 reads 12.7万 rather than 127k. Below 万 the number is shown in full.
+    /// Compact values keep three significant digits, the same precision the panel
+    /// has always shown; the exact count is in the tooltip and the VoiceOver label.
     static func token(_ value: Int64) -> String {
-        let number = Double(value)
-        if abs(number) >= 1_000_000_000 { return String(format: "%.2fB", number / 1_000_000_000) }
-        if abs(number) >= 10_000_000 { return String(format: "%.0fM", number / 1_000_000) }
-        if abs(number) >= 1_000_000 { return String(format: "%.1fM", number / 1_000_000) }
-        if abs(number) >= 10_000 { return String(format: "%.0fk", number / 1_000) }
-        if abs(number) >= 1_000 { return String(format: "%.1fk", number / 1_000) }
-        return "\(value)"
+        let magnitude = value.magnitude
+        guard magnitude >= 10_000 else { return exact(value) }
+        let sign = value < 0 ? "-" : ""
+        // Each tier keeps three significant digits. Rounding can carry a value into
+        // the next tier (99,995 is 10.0万, not 10.00万), so the tier is chosen from the
+        // rounded value rather than the raw one.
+        let tiers: [(divisor: Double, unit: String)] = [(1e4, "万"), (1e8, "亿")]
+        for (index, tier) in tiers.enumerated() {
+            let scaled = Double(magnitude) / tier.divisor
+            let isLast = index == tiers.count - 1
+            if !isLast, scaled >= 9_999.5 { continue }
+            let digits = scaled < 9.995 ? 2 : scaled < 99.95 ? 1 : 0
+            return sign + String(format: "%.\(digits)f", locale: posix, scaled) + tier.unit
+        }
+        return exact(value)
     }
 
+    /// A count of things (requests, turns, tool calls): exact below 万, compact above.
     static func count(_ value: Int64) -> String {
-        value >= 10_000 ? token(value) : value.formatted(.number.grouping(.automatic).locale(locale))
+        value.magnitude >= 10_000 ? token(value) : exact(value)
     }
 
-    /// The interface is written in Chinese, so its dates are too, whatever the
-    /// system region: "Aug 4, 2026" in the middle of Chinese text reads as a bug.
-    static let locale = Locale(identifier: "zh_CN")
+    /// The full number with digit grouping, for tooltips and VoiceOver.
+    static func exact(_ value: Int64) -> String {
+        value.formatted(.number.grouping(.automatic).locale(locale))
+    }
+
+    static var locale: Locale { L10n.locale }
+
+    /// Decimal separators inside compact numbers are always ".", which zh-Hans also
+    /// uses; `String(format:)` would otherwise follow the process locale.
+    private static let posix = Locale(identifier: "en_US_POSIX")
 
     static func weekday(_ date: Date) -> String {
         date.formatted(.dateTime.weekday(.narrow).locale(locale))
@@ -127,6 +149,10 @@ enum Format {
     }
 
     static func percent(_ value: Double) -> String {
-        value.formatted(.percent.precision(.fractionLength(0)))
+        value.formatted(.percent.precision(.fractionLength(0)).locale(locale))
+    }
+
+    static func milliseconds(_ interval: TimeInterval) -> Int {
+        Int((interval * 1000).rounded())
     }
 }

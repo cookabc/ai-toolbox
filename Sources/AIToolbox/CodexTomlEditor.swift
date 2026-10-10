@@ -10,10 +10,10 @@ enum CodexTomlEditor {
 
     static let builtInOpenAI = CodexProviderRecord(
         id: "openai",
-        name: "官方 OpenAI",
+        name: L10n.Config.officialOpenAI,
         baseURL: "",
         hasAPIKey: false,
-        maskedAPIKey: "使用 auth.json / 官方登录",
+        maskedAPIKey: L10n.Config.officialCodexKey,
         isBuiltIn: true
     )
 
@@ -28,7 +28,9 @@ enum CodexTomlEditor {
                 name: fields["name"] ?? id,
                 baseURL: fields["base_url"] ?? "",
                 hasAPIKey: !secret.isEmpty || !envKey.isEmpty,
-                maskedAPIKey: !secret.isEmpty ? SecretDisplay.mask(secret) : (envKey.isEmpty ? "未设置" : "环境变量 \(envKey)"),
+                maskedAPIKey: !secret.isEmpty
+                    ? SecretDisplay.mask(secret)
+                    : (envKey.isEmpty ? L10n.Config.notSet : L10n.Config.environmentKey(envKey)),
                 isBuiltIn: false
             )
         }

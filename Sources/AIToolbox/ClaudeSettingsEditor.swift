@@ -25,7 +25,7 @@ enum ClaudeSettingsEditor {
                 + "\n}\n").utf8)
         }
         guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
-            throw LiveConfigError.writeFailed("settings.json 不是一个 JSON 对象，未做修改。")
+            throw LiveConfigError.writeFailed(L10n.Errors.settingsNotObject)
         }
         var bytes = [UInt8](data)
         var scanner = JSONScanner(bytes: bytes)
@@ -34,7 +34,7 @@ enum ClaudeSettingsEditor {
 
         if let env = members.first(where: { $0.key == "env" }) {
             guard bytes[env.value.lowerBound] == UInt8(ascii: "{") else {
-                throw LiveConfigError.writeFailed("settings.json 中的 env 不是对象，未做修改。")
+                throw LiveConfigError.writeFailed(L10n.Errors.settingsEnvNotObject)
             }
             let existing = try scanner.members(of: env.value)
             var entries: [(String, String)] = []
@@ -75,7 +75,7 @@ enum ClaudeSettingsEditor {
         }
         let result = Data(bytes)
         guard (try? JSONSerialization.jsonObject(with: result)) is [String: Any] else {
-            throw LiveConfigError.writeFailed("生成的 settings.json 无法通过校验，未做修改。")
+            throw LiveConfigError.writeFailed(L10n.Errors.settingsInvalidResult)
         }
         return result
     }
@@ -85,7 +85,7 @@ enum ClaudeSettingsEditor {
     static func env(in data: Data?) throws -> [String: String] {
         guard let data, data.contains(where: { !isWhitespace($0) }) else { return [:] }
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw LiveConfigError.writeFailed("settings.json 不是一个 JSON 对象。")
+            throw LiveConfigError.writeFailed(L10n.Errors.settingsNotObjectForReading)
         }
         guard let env = root["env"] as? [String: Any] else { return [:] }
         return env.mapValues { value in

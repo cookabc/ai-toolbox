@@ -54,9 +54,9 @@ enum ProviderReadError: LocalizedError, Equatable, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .missing(let id): "未找到 \(id.title) 的本地记录目录。用它完成一次对话后，这里就会有数据。"
-        case .noRecords(let id): "\(id.title) 的记录目录存在，但还没有可识别的用量记录。"
-        case .incompatible(let id): "\(id.title) 的记录无法解析，可能是日志格式有变化。"
+        case .missing(let id): L10n.Usage.missingDirectory(id.title)
+        case .noRecords(let id): L10n.Usage.noRecords(id.title)
+        case .incompatible(let id): L10n.Usage.incompatible(id.title)
         }
     }
 }

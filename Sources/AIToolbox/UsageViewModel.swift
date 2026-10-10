@@ -138,21 +138,19 @@ final class UsageViewModel: ObservableObject {
 
     /// What the menu-bar item says to VoiceOver.
     var statusText: String {
-        let title = selectedProvider.title
-        guard let today = today() else { return "\(title) 今日输出暂无" }
-        return "\(title) 今日输出 \(Format.token(today.outputTokens))"
+        L10n.App.menuBarStatus(tool: selectedProvider.title, todayOutput: today().map { Format.token($0.outputTokens) })
     }
 
     func sourceWarning(_ id: UsageProviderID) -> String? {
         guard let state = states[id], let snapshot = state.snapshot else { return nil }
-        if state.errorMessage != nil { return "刷新失败，显示的是上次成功读取的数据。" }
-        if !isCurrent(id) { return "今天还没有读取成功，今日数据暂缺。" }
+        if state.errorMessage != nil { return L10n.Usage.staleAfterFailure }
+        if !isCurrent(id) { return L10n.Usage.notReadToday }
         let coverage = snapshot.coverage
         if coverage.skippedRecords > 0 {
-            return "有 \(coverage.skippedRecords) 条用量记录无法解析，统计可能偏少。"
+            return L10n.Usage.skippedRecords(coverage.skippedRecords)
         }
         if coverage.undatedRecords > 0 {
-            return "有 \(coverage.undatedRecords) 条记录缺少时间，只计入累计。"
+            return L10n.Usage.undatedRecords(coverage.undatedRecords)
         }
         return nil
     }
@@ -163,6 +161,6 @@ final class UsageViewModel: ObservableObject {
 
     /// A metric no record reports is unknown, which reads as "—", not "0".
     func display(_ value: Int64, _ metric: UsageMetric) -> String {
-        reports(metric) ? Format.token(value) : "—"
+        reports(metric) ? Format.token(value) : L10n.Usage.unknown
     }
 }

@@ -154,7 +154,7 @@ struct LiveConfigStore: Sendable {
         removeCatalogIfUnused()
         if let leavingOfficialModel { rememberOfficialModel(leavingOfficialModel) }
         if makeCurrent, keptHandWritten, publication.path != nil {
-            return "保留了你手动设置的 model_catalog_json，所以没有把模型发布到 Codex 的模型列表"
+            return L10n.Config.keptHandWrittenCatalog
         }
         return publication.note
     }

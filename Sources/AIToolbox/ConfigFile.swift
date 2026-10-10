@@ -44,7 +44,7 @@ enum ConfigFile {
             try replace(target, with: next)
             return true
         }
-        throw LiveConfigError.writeFailed("\(url.lastPathComponent) 正在被其他程序频繁修改，请稍后重试。")
+        throw LiveConfigError.writeFailed(L10n.Errors.fileBusy(url.lastPathComponent))
     }
 
     /// Writes a file this app owns outright.
@@ -62,7 +62,7 @@ enum ConfigFile {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
-            throw LiveConfigError.writeFailed("无法创建目录 \(directory.path)。")
+            throw LiveConfigError.writeFailed(L10n.Errors.cannotCreateDirectory(directory.path))
         }
         let temp = directory.appending(path: ".\(target.lastPathComponent).\(UUID().uuidString).tmp")
         let descriptor = open(temp.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
@@ -90,10 +90,10 @@ enum ConfigFile {
 
     private static func failure(_ code: Int32, _ url: URL) -> LiveConfigError {
         switch code {
-        case EACCES, EPERM: .writeFailed("没有写入 \(url.path) 的权限。")
-        case ENOSPC, EDQUOT: .writeFailed("磁盘空间不足，\(url.lastPathComponent) 未写入。")
-        case EROFS: .writeFailed("\(url.path) 所在的卷是只读的。")
-        default: .writeFailed("\(url.lastPathComponent)：\(String(cString: strerror(code)))")
+        case EACCES, EPERM: .writeFailed(L10n.Errors.noWritePermission(url.path))
+        case ENOSPC, EDQUOT: .writeFailed(L10n.Errors.diskFull(url.lastPathComponent))
+        case EROFS: .writeFailed(L10n.Errors.readOnlyVolume(url.path))
+        default: .writeFailed(L10n.Errors.fileError(url.lastPathComponent, String(cString: strerror(code))))
         }
     }
 }

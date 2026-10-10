@@ -35,7 +35,7 @@ enum CodexModelCatalog {
     /// to `config.toml`.
     static func make(providerName: String, model: String, officialCatalog: URL) throws -> Data {
         let slug = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !slug.isEmpty else { throw LiveConfigError.missingField("模型") }
+        guard !slug.isEmpty else { throw LiveConfigError.missingField(L10n.Config.model) }
         let official = try officialEntries(at: officialCatalog)
         // A relay serving an official model under its own name is that model: it
         // takes that entry's prompt and metadata, and replaces it rather than
@@ -49,7 +49,7 @@ enum CodexModelCatalog {
         var entry: [String: Any] = [
             "slug": slug,
             "display_name": slug,
-            "description": "由 \(name.isEmpty ? slug : name) 提供",
+            "description": L10n.Config.catalogDescription(name.isEmpty ? slug : name),
             "supported_reasoning_levels": source["supported_reasoning_levels"] ?? [],
             "shell_type": source["shell_type"] ?? "unified_exec",
             "visibility": "list",
