@@ -134,17 +134,20 @@ enum Ink {
   static let claude = fixed(0xD97757)
 }
 
-/// The bundled pixel typeface: Ark Pixel 12px Proportional, Simplified Chinese
-/// variant (SIL Open Font License 1.1, see `ArkPixel-OFL.txt`).
+/// The bundled pixel typeface: Ark Pixel 12px Proportional, Latin variant
+/// (SIL Open Font License 1.1, see `ArkPixel-OFL.txt`).
 ///
-/// It covers Latin, digits and 18,000+ CJK ideographs on a 12-pixel grid, so the
-/// interface's titles and labels can be pixel type in Chinese, not only in ASCII.
-/// Its digits share one advance width, so numbers do not shift as they change.
-/// Anything it lacks falls back through Core Text's cascade to the system font —
-/// never a missing-glyph box.
+/// It covers Latin, digits, the punctuation the English interface uses and the CJK
+/// base upstream ships in every regional cut, all on a 12-pixel grid, so the
+/// interface's titles and labels can be pixel type. The regional variants differ in
+/// which form each Han character takes, not in how much they cover — the Latin cut
+/// is only ~4% smaller than the Simplified-Chinese one. It is chosen because the
+/// interface is English, not because it prunes glyphs. Its digits share one advance
+/// width, so numbers do not shift as they change. Anything the face does lack falls
+/// back through Core Text's cascade to the system font, never a missing-glyph box.
 enum PixelFont {
-  static let postScriptName = "Ark-Pixel-12px-Prop-zh-Hans-Regular"
-  static let resourceName = "ark-pixel-12px-proportional-zh_hans"
+  static let postScriptName = "Ark-Pixel-12px-Prop-latin-Regular"
+  static let resourceName = "ark-pixel-12px-proportional-latin"
   static let resourceExtension = "woff2"
   /// The size the glyphs are drawn for. Only whole multiples are pixel-exact.
   static let designSize: CGFloat = 12
