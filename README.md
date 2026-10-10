@@ -53,7 +53,7 @@ swift test
 ```
 
 The package product is an executable target (`AIToolbox`); the interface
-resources (the pixel font and its licence file) ship with the bundle.
+resources (the pixel font and its license file) ship with the bundle.
 
 Optional render tasks (sample data only):
 
@@ -118,10 +118,17 @@ The product is ad-hoc signed and meant for local builds only; copying it to
 another Mac will be stopped by Gatekeeper. Distributing it publicly needs a
 Developer ID signature and notarization first.
 
+## License
+
+The app code is released under the [MIT License](LICENSE). The bundled Ark
+Pixel font stays under its own
+[SIL Open Font License 1.1](Sources/AIToolbox/Resources/ArkPixel-OFL.txt); see
+Third-party resources below.
+
 ## Third-party resources
 
 The pixel font is the Latin variant of
 [Ark Pixel Font](https://github.com/TakWolf/ark-pixel-font) 12px proportional,
 © TakWolf, licensed under the SIL Open Font License 1.1, redistributed with the
-app unmodified; the full licence text is in
+app unmodified; the full license text is in
 `Sources/AIToolbox/Resources/ArkPixel-OFL.txt`.
