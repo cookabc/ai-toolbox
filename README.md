@@ -47,6 +47,9 @@ It follows the system's light and dark appearance (`docs/images/detail-dark.png`
 
 ## Build and test
 
+Building requires Xcode 26 or later (Swift 6.2+) for `isolated deinit` support.
+GitHub Actions uses Xcode 26.3. The app's minimum runtime version remains macOS 13.
+
 ```bash
 swift build
 swift test
