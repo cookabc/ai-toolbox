@@ -145,11 +145,6 @@ final class PanelLayoutTests: XCTestCase {
       styleMask: [.borderless], backing: .buffered, defer: false
     )
     window.isReleasedWhenClosed = false
-    let host = NSHostingView(
-      rootView: Color.white
-        .background(PanelTopAnchor().frame(width: 0, height: 0)))
-    host.sizingOptions = []  // let the window resize independently, as MenuBarExtra does
-    window.contentView = host
     window.makeKeyAndOrderFront(nil)
     defer { window.close() }
 
@@ -157,9 +152,23 @@ final class PanelLayoutTests: XCTestCase {
     // `NSScreen.main` is context-sensitive (it follows the key window and shifts as
     // windows are created and closed), so it is not a stable oracle in a test run.
     let menuBarBottom = try XCTUnwrap(window.screen).visibleFrame.maxY
+    // Establish the misplaced baseline before attaching the anchor: AppKit may
+    // lay out a hosting view immediately, so checking afterwards races the fix.
+    window.setFrameOrigin(NSPoint(
+      x: window.frame.minX, y: menuBarBottom - window.frame.height - 40))
     XCTAssertNotEqual(
       window.frame.maxY, menuBarBottom, accuracy: 0.5,
       "the harness must start misplaced, or this proves nothing")
+
+    let host = NSHostingView(
+      rootView: Color.white
+        .background(PanelTopAnchor().frame(width: 0, height: 0)))
+    host.sizingOptions = []  // let the window resize independently, as MenuBarExtra does
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.03))
+    XCTAssertEqual(window.frame.maxY, menuBarBottom, accuracy: 0.5,
+                   "attaching the anchor must correct the initial position")
 
     for height in [244.0, 602.0, 306.0, 602.0, 125.0, 479.0] {
       window.setContentSize(NSSize(width: UsagePopoverView.panelWidth, height: height))
