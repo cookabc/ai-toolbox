@@ -45,5 +45,9 @@ jobs:
                 ;;
             esac
           done
+          xcrun lldb --batch -o run -o 'thread backtrace all' -- \
+            "$(xcrun --find xctest)" \
+            -XCTest AIToolboxTests.PanelLayoutTests/testPanelHeightTracksContent \
+            "$(swift build --show-bin-path)/AIToolboxPackageTests.xctest"
       - name: Package local app
         run: bash scripts/package-app.sh
