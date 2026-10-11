@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     env:
-      # isolated deinit requires Swift 6.2+; macos-15 defaults to Xcode 16.4.
+      # Match Package.swift's Swift 6.2 minimum; macos-15 defaults to Xcode 16.4.
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,9 +45,5 @@ jobs:
                 ;;
             esac
           done
-          xcrun lldb --batch -o run -k 'thread backtrace all' -- \
-            "$(xcrun --find xctest)" \
-            -XCTest AIToolboxTests.PanelLayoutTests/testPanelHeightTracksContent \
-            "$(swift build --show-bin-path)/AIToolboxPackageTests.xctest"
       - name: Package local app
         run: bash scripts/package-app.sh

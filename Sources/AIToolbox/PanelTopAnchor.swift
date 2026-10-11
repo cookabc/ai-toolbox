@@ -258,7 +258,10 @@ struct PanelTopAnchor: NSViewRepresentable {
             observers = []
         }
 
-        isolated deinit {
+        // AppKit releases this view on the main thread. Avoid isolated deinit's
+        // executor hop, which can invalid-free task-local storage on macOS 15
+        // (swiftlang/swift#88036); retain the main-actor cleanup assertion.
+        nonisolated deinit {
             MainActor.assumeIsolated {
                 stopObserving()
                 stopWatchdog()
