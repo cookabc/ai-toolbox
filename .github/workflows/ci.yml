@@ -35,5 +35,15 @@ jobs:
         run: plutil -lint Info.plist
       - name: Test
         run: swift test
+      - name: Report test crashes
+        if: failure()
+        run: |
+          for report in "$HOME"/Library/Logs/DiagnosticReports/*; do
+            case "$report" in
+              *AIToolbox*|*xctest*)
+                if [[ -f "$report" ]]; then cat "$report"; fi
+                ;;
+            esac
+          done
       - name: Package local app
         run: bash scripts/package-app.sh
