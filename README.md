@@ -118,6 +118,10 @@ The product is ad-hoc signed and meant for local builds only; copying it to
 another Mac will be stopped by Gatekeeper. Distributing it publicly needs a
 Developer ID signature and notarization first.
 
+GitHub Actions runs the default tests and builds the local app bundle on pushes
+and pull requests. Optional live-data and rendering tests remain opt-in. CI has
+no distribution credentials and does not publish a release.
+
 ## License
 
 The app code is released under the [MIT License](LICENSE). The bundled Ark

@@ -1,0 +1,34 @@
+name: macOS checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate scripts
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Toolchain
+        run: swift --version
+      - name: Validate app information
+        run: plutil -lint Info.plist
+      - name: Test
+        run: swift test
+      - name: Package local app
+        run: bash scripts/package-app.sh
