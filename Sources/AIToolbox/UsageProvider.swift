@@ -65,4 +65,9 @@ struct ProviderState: Sendable {
     var snapshot: UsageSnapshot?
     var errorMessage: String?
     var isRefreshing = false
+    /// Whether this read is one the user is waiting for, so the header shows
+    /// progress for it. It lives beside `isRefreshing` rather than in a separate
+    /// published collection because every published change re-renders the whole
+    /// panel, and a refresh should cost one of those per phase, not two.
+    var showsProgress = false
 }

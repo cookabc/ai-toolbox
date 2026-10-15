@@ -5,14 +5,12 @@ typealias UsageLoader = @Sendable () throws -> UsageSnapshot
 
 @MainActor
 final class UsageViewModel: ObservableObject {
-    @Published private(set) var states: [UsageProviderID: ProviderState] = [:]
+    @Published private(set) var states: [UsageProviderID: ProviderState] = [:] {
+        didSet { PerfSignpost.publish("states") }
+    }
     @Published var selectedProvider: UsageProviderID = .codex {
         didSet { preferences?.set(selectedProvider.rawValue, forKey: Self.selectionKey) }
     }
-    /// Reads the user is waiting for: a manual refresh, or the first read of a tool
-    /// that has nothing to show yet. Timer refreshes run silently, so the header does
-    /// not spin every 30 seconds.
-    @Published private(set) var visibleRefreshes: Set<UsageProviderID> = []
 
     static let refreshInterval: TimeInterval = 30
 
@@ -27,7 +25,7 @@ final class UsageViewModel: ObservableObject {
 
     var snapshot: UsageSnapshot? { states[selectedProvider]?.snapshot }
     var errorMessage: String? { states[selectedProvider]?.errorMessage }
-    var isRefreshing: Bool { visibleRefreshes.contains(selectedProvider) }
+    var isRefreshing: Bool { states[selectedProvider]?.showsProgress == true }
     var sourceIDs: [UsageProviderID] {
         UsageProviderID.allCases.filter { loaders[$0] != nil }
     }
@@ -52,7 +50,7 @@ final class UsageViewModel: ObservableObject {
         guard refreshTimer == nil else { return }
         refreshAll()
         let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshAll() }
+            MainActor.assumeIsolated { self?.refreshSelected() }
         }
         // Lets the system batch this wakeup with others; the exact second never matters.
         timer.tolerance = 5
@@ -63,11 +61,17 @@ final class UsageViewModel: ObservableObject {
     func stop() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        var updated = states
+        var changed = false
         for id in sourceIDs {
             generations[id, default: 0] += 1
-            states[id, default: ProviderState()].isRefreshing = false
+            guard var state = updated[id], state.isRefreshing || state.showsProgress else { continue }
+            state.isRefreshing = false
+            state.showsProgress = false
+            updated[id] = state
+            changed = true
         }
-        visibleRefreshes = []
+        if changed { states = updated }
     }
 
     /// A manual refresh of the selected tool. Shows progress.
@@ -88,12 +92,37 @@ final class UsageViewModel: ObservableObject {
         for id in sourceIDs { refresh(id, visible: false) }
     }
 
+    /// The periodic read covers only the tool on screen. Reading the others every
+    /// interval would re-render the panel for numbers nobody is looking at; a tab
+    /// switch reads its own tool instead.
+    func refreshSelected() {
+        refresh(selectedProvider, visible: false)
+    }
+
+    /// Selecting a tab is when the other tool's figures become something the user is
+    /// waiting for, so the read the timer no longer performs for it happens here.
+    func select(_ id: UsageProviderID) {
+        selectedProvider = id
+        refresh(id, visible: states[id]?.snapshot == nil)
+    }
+
     private func refresh(_ id: UsageProviderID, visible: Bool) {
         guard let loader = loaders[id] else { return }
+        var state = states[id] ?? ProviderState()
         // Nothing on screen yet means the user is waiting, whatever started the read.
-        if visible || states[id]?.snapshot == nil { visibleRefreshes.insert(id) }
-        guard states[id]?.isRefreshing != true else { return }
-        states[id, default: ProviderState()].isRefreshing = true
+        let shouldShow = visible || state.snapshot == nil
+        guard state.isRefreshing != true else {
+            if shouldShow, state.showsProgress != true {
+                state.showsProgress = true
+                states[id] = state
+            }
+            return
+        }
+        // One published write per phase: the panel observes the whole dictionary, so
+        // each extra mutation here is another full render.
+        state.isRefreshing = true
+        state.showsProgress = shouldShow
+        states[id] = state
         generations[id, default: 0] += 1
         let generation = generations[id, default: 0]
         Task {
@@ -101,17 +130,17 @@ final class UsageViewModel: ObservableObject {
                 Result<UsageSnapshot, Error> { try loader() }
             }.value
             guard generations[id] == generation else { return }
-            var state = states[id, default: ProviderState()]
-            state.isRefreshing = false
+            var settled = states[id] ?? ProviderState()
+            settled.isRefreshing = false
+            settled.showsProgress = false
             switch result {
             case .success(let snapshot):
-                state.snapshot = snapshot
-                state.errorMessage = nil
+                settled.snapshot = snapshot
+                settled.errorMessage = nil
             case .failure(let error):
-                state.errorMessage = error.localizedDescription
+                settled.errorMessage = error.localizedDescription
             }
-            states[id] = state
-            visibleRefreshes.remove(id)
+            states[id] = settled
         }
     }
 

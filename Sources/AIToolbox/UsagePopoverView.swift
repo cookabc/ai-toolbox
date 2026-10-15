@@ -368,7 +368,7 @@ struct UsagePopoverView: View {
   private func selectTool(_ tool: LiveConfigApp) {
     guard selectedTool != tool else { return }
     selectedTool = tool
-    model.selectedProvider = tool.usageProvider
+    model.select(tool.usageProvider)
     configModel.app = tool
     persistSelectedTool(tool)
   }
