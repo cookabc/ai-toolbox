@@ -696,9 +696,11 @@ struct PixelDialog: View {
             .buttonStyle(PixelButtonStyle(kind: .secondary))
             .pixelFocusEffect()
             .keyboardShortcut(.cancelAction)
+            .panelID(PanelID.dialogCancel)
           Button(confirmTitle, action: onConfirm)
             .buttonStyle(PixelButtonStyle(kind: destructive ? .danger : .primary))
             .pixelFocusEffect()
+            .panelID(PanelID.dialogConfirm)
         }
       }
       .padding(Pixel.Space.xxl)

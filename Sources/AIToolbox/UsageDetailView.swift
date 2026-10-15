@@ -30,10 +30,14 @@ struct UsageDetailView: View {
           )
         }
         TodayCard(model: model, today: model.today())
+          .panelID(PanelID.todayCard)
         TrendCard(days: model.recentDays(7), today: model.currentDate)
+          .panelID(PanelID.trendCard)
         LifetimeCard(model: model, snapshot: snapshot, isExpanded: $lifetimeExpanded)
+          .panelID(PanelID.lifetimeCard)
         if !snapshot.models.isEmpty {
           ModelsCard(models: snapshot.models, isExpanded: $modelsExpanded)
+            .panelID(PanelID.modelsCard)
         }
         Text(L10n.Usage.footnote)
           .font(.system(size: 10))

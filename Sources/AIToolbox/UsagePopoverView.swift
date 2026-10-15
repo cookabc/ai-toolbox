@@ -250,6 +250,7 @@ struct UsagePopoverView: View {
       .help(showsConfig ? L10n.Header.reloadConfig : L10n.Header.refreshUsage)
       .accessibilityLabel(showsConfig ? L10n.Header.reloadConfig : L10n.Header.refreshUsage)
       .accessibilityValue(headerIsBusy ? L10n.Common.busy : "")
+      .panelID(PanelID.refresh)
 
       Button(action: openDataDirectory) {
         PixelIconView(.folder)
@@ -258,6 +259,7 @@ struct UsagePopoverView: View {
       .pixelFocusEffect()
       .help(L10n.Header.openDataDirectory)
       .accessibilityLabel(L10n.Header.openDataDirectory)
+      .panelID(PanelID.openDataDirectory)
 
       Button {
         NSApplication.shared.terminate(nil)
@@ -269,6 +271,7 @@ struct UsagePopoverView: View {
       .keyboardShortcut("q", modifiers: .command)
       .help(L10n.Header.quit)
       .accessibilityLabel(L10n.Header.quit)
+      .panelID(PanelID.quit)
     }
   }
 
@@ -288,6 +291,7 @@ struct UsagePopoverView: View {
           .buttonStyle(PixelTabStyle(isSelected: isSelected))
           .pixelFocusEffect()
           .accessibilityAddTraits(isSelected ? .isSelected : [])
+          .panelID(PanelID.tool(app))
         }
       }
       // Both wells are sized to their longest label, which the two tabs share
@@ -301,11 +305,13 @@ struct UsagePopoverView: View {
       Spacer(minLength: 0)
 
       PixelTabWell {
-        modeTab(L10n.Mode.usage, help: L10n.Mode.usageHelp, icon: .usage, isSelected: !showsConfig) {
+        modeTab(L10n.Mode.usage, help: L10n.Mode.usageHelp, icon: .usage,
+                id: PanelID.modeUsage, isSelected: !showsConfig) {
           guard showsConfig else { return }
           showsConfig = false
         }
-        modeTab(L10n.Mode.config, help: L10n.Mode.configHelp, icon: .config, isSelected: showsConfig) {
+        modeTab(L10n.Mode.config, help: L10n.Mode.configHelp, icon: .config,
+                id: PanelID.modeConfig, isSelected: showsConfig) {
           guard !showsConfig else { return }
           showsConfig = true
         }
@@ -320,7 +326,8 @@ struct UsagePopoverView: View {
   }
 
   private func modeTab(
-    _ title: String, help: String, icon: PixelIcon, isSelected: Bool, action: @escaping () -> Void
+    _ title: String, help: String, icon: PixelIcon, id: String, isSelected: Bool,
+    action: @escaping () -> Void
   ) -> some View {
     Button(action: action) {
       HStack(spacing: Pixel.Space.xs) {
@@ -332,6 +339,7 @@ struct UsagePopoverView: View {
     .pixelFocusEffect()
     .help(help)
     .accessibilityAddTraits(isSelected ? .isSelected : [])
+    .panelID(id)
   }
 
   /// The freshness of what is on screen, or what is happening to it.

@@ -76,6 +76,7 @@ struct LiveConfigView: View {
         }
         .buttonStyle(PixelDashedButtonStyle(icon: .plus))
         .pixelFocusEffect()
+        .panelID(PanelID.configAddProvider)
       }
     }
   }
@@ -262,15 +263,18 @@ struct LiveConfigView: View {
           }
           .buttonStyle(PixelButtonStyle(kind: .secondary, icon: .save))
           .pixelFocusEffect()
+          .panelID(PanelID.configSave)
           Button(L10n.Config.saveAndSwitch) {
             model.saveDraft(activate: true)
           }
           .buttonStyle(PixelButtonStyle(kind: .primary, icon: .swap))
           .pixelFocusEffect()
           .keyboardShortcut(.defaultAction)
+          .panelID(PanelID.configSaveAndSwitch)
           Spacer(minLength: 0)
           Button(L10n.Config.cancel) { model.cancelDraft() }
             .buttonStyle(PixelButtonStyle(kind: .quiet))
+            .panelID(PanelID.configCancelDraft)
             .pixelFocusEffect()
             .keyboardShortcut(.cancelAction)
         }
@@ -351,6 +355,7 @@ struct LiveConfigView: View {
         }
       }
     }
+    .panelID(PanelID.configAdvanced)
   }
 
   private func extraEnvBinding(_ key: String) -> Binding<String> {
