@@ -1,35 +1,36 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 final class CodexModelCatalogTests: XCTestCase {
     /// What Codex itself downloads. The relay entry borrows the prompt from here,
     /// because a catalog entry without instructions fails to load at all.
     private let officialCatalog = """
-    { "models": [
-        {
-            "slug": "hidden-model",
-            "display_name": "Hidden",
-            "visibility": "hide",
-            "priority": 9,
-            "context_window": 400000,
-            "model_messages": { "instructions_template": "hidden prompt" }
-        },
-        {
-            "slug": "gpt-6-astra",
-            "display_name": "GPT-6-Astra",
-            "visibility": "list",
-            "priority": 1,
-            "context_window": 272000,
-            "max_context_window": 872000,
-            "effective_context_window_percent": 95,
-            "supported_reasoning_levels": [{ "effort": "low", "description": "Fast" }],
-            "shell_type": "unified_exec",
-            "truncation_policy": { "mode": "tokens", "limit": 10000 },
-            "model_messages": { "instructions_template": "You are Codex." }
-        }
-    ]}
-    """
+        { "models": [
+            {
+                "slug": "hidden-model",
+                "display_name": "Hidden",
+                "visibility": "hide",
+                "priority": 9,
+                "context_window": 400000,
+                "model_messages": { "instructions_template": "hidden prompt" }
+            },
+            {
+                "slug": "gpt-6-astra",
+                "display_name": "GPT-6-Astra",
+                "visibility": "list",
+                "priority": 1,
+                "context_window": 272000,
+                "max_context_window": 872000,
+                "effective_context_window_percent": 95,
+                "supported_reasoning_levels": [{ "effort": "low", "description": "Fast" }],
+                "shell_type": "unified_exec",
+                "truncation_policy": { "mode": "tokens", "limit": 10000 },
+                "model_messages": { "instructions_template": "You are Codex." }
+            }
+        ]}
+        """
 
     /// Relays often serve official models under their own names. The catalog must
     /// not then hold two entries with one slug, and the relay's entry is that model.
@@ -42,7 +43,9 @@ final class CodexModelCatalogTests: XCTestCase {
         XCTAssertEqual(slugs, ["hidden-model", "gpt-6-astra"])
         XCTAssertEqual(models.first?["visibility"] as? String, "list")
         XCTAssertEqual(models.first?["context_window"] as? Int, 400_000, "metadata of the same model")
-        XCTAssertEqual((models.first?["model_messages"] as? [String: Any])?["instructions_template"] as? String, "hidden prompt")
+        XCTAssertEqual(
+            (models.first?["model_messages"] as? [String: Any])?["instructions_template"] as? String,
+            "hidden prompt")
     }
 
     func testRelayEntryIsListedAndOfficialEntriesStayResolvable() throws {
@@ -86,9 +89,10 @@ final class CodexModelCatalogTests: XCTestCase {
     /// warning this feature removes.
     func testEntryKeepsCodexLoadableWithIncompleteOfficialCatalog() throws {
         let thin = """
-        { "models": [{ "slug": "only", "display_name": "Only", "visibility": "list", "base_instructions": "Be brief." }] }
-        """
-        let data = try CodexModelCatalog.make(providerName: "", model: "k3", officialCatalog: try fixture(thin))
+            { "models": [{ "slug": "only", "display_name": "Only", "visibility": "list", "base_instructions": "Be brief." }] }
+            """
+        let data = try CodexModelCatalog.make(
+            providerName: "", model: "k3", officialCatalog: try fixture(thin))
         let relay = try XCTUnwrap(try models(in: data).first)
 
         XCTAssertEqual(relay["base_instructions"] as? String, "Be brief.")
@@ -98,10 +102,14 @@ final class CodexModelCatalogTests: XCTestCase {
 
     func testMissingOfficialCatalogIsReported() throws {
         let url = try fixture(nil)
-        XCTAssertThrowsError(try CodexModelCatalog.make(providerName: "ARouter", model: "k3", officialCatalog: url)) { error in
+        XCTAssertThrowsError(
+            try CodexModelCatalog.make(providerName: "ARouter", model: "k3", officialCatalog: url)
+        ) { error in
             XCTAssertEqual(error as? LiveConfigError, .missingModelCatalog(url))
         }
-        XCTAssertThrowsError(try CodexModelCatalog.make(providerName: "ARouter", model: "  ", officialCatalog: url)) { error in
+        XCTAssertThrowsError(
+            try CodexModelCatalog.make(providerName: "ARouter", model: "  ", officialCatalog: url)
+        ) { error in
             XCTAssertEqual(error as? LiveConfigError, .missingField("Model"))
         }
     }
@@ -120,7 +128,8 @@ final class CodexModelCatalogTests: XCTestCase {
             .appending(path: "models_cache.json")
         addTeardownBlock { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         if let contents {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try contents.data(using: .utf8)!.write(to: url)
         }
         return url

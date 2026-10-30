@@ -54,7 +54,9 @@ struct TomlDocument {
 
     /// The value of `key` in `table` if it is a string of any of the four kinds.
     func string(_ key: String, in table: [String] = []) -> String? {
-        guard let statement = pair([key], in: table), case .pair(_, let value) = statement.kind else { return nil }
+        guard let statement = pair([key], in: table), case .pair(_, let value) = statement.kind else {
+            return nil
+        }
         return Self.decodeString(Array(bytes[value]))
     }
 
@@ -67,7 +69,8 @@ struct TomlDocument {
         var seen: [String] = []
         for statement in statements {
             guard case .table(let path, false) = statement.kind, path.count == prefix.count + 1,
-                  Array(path.prefix(prefix.count)) == prefix, !seen.contains(path.last!) else { continue }
+                Array(path.prefix(prefix.count)) == prefix, !seen.contains(path.last!)
+            else { continue }
             seen.append(path.last!)
         }
         return seen
@@ -78,7 +81,8 @@ struct TomlDocument {
         var result: [String: String] = [:]
         for statement in statements where statement.table == table {
             guard case .pair(let path, let value) = statement.kind, path.count == 1,
-                  let string = Self.decodeString(Array(bytes[value])) else { continue }
+                let string = Self.decodeString(Array(bytes[value]))
+            else { continue }
             result[path[0]] = string
         }
         return result
@@ -98,8 +102,10 @@ struct TomlDocument {
                 let full = table + key
                 // A pair inside the table itself, or inside one of its sub-tables, is fine.
                 if table.count >= path.count, Array(table.prefix(path.count)) == path { continue }
-                if full.count >= path.count ? Array(full.prefix(path.count)) == path
-                                            : Array(path.prefix(full.count)) == full {
+                if full.count >= path.count
+                    ? Array(full.prefix(path.count)) == path
+                    : Array(path.prefix(full.count)) == full
+                {
                     return true
                 }
             case .trivia:
@@ -114,7 +120,9 @@ struct TomlDocument {
     /// Sets a string value, keeping the key's own spelling and any trailing comment.
     /// A new key is inserted after `after` when that key exists in the same table,
     /// otherwise after the table's last key.
-    mutating func setString(_ key: String, _ value: String, in table: [String] = [], after: String? = nil) throws {
+    mutating func setString(_ key: String, _ value: String, in table: [String] = [], after: String? = nil)
+        throws
+    {
         let literal = Array(Self.quote(value).utf8)
         if let statement = pair([key], in: table), case .pair(_, let range) = statement.kind {
             try replace(range, with: literal)
@@ -191,7 +199,8 @@ struct TomlDocument {
     }
 
     private func isBlank(_ statement: Statement) -> Bool {
-        statement.kind == .trivia && bytes[statement.range].allSatisfy { $0 == 32 || $0 == 9 || $0 == 10 || $0 == 13 }
+        statement.kind == .trivia
+            && bytes[statement.range].allSatisfy { $0 == 32 || $0 == 9 || $0 == 10 || $0 == 13 }
     }
 
     private func insertionPoint(in table: [String], after: String?) -> Int {
@@ -203,13 +212,17 @@ struct TomlDocument {
         if table.isEmpty {
             // No root keys yet: go above the first table, and above the comment block
             // that sits directly on top of it, so that comment keeps describing it.
-            guard let firstTable = statements.firstIndex(where: { if case .table = $0.kind { true } else { false } })
+            guard
+                let firstTable = statements.firstIndex(where: {
+                    if case .table = $0.kind { true } else { false }
+                })
             else { return bytes.count }
             var index = firstTable
             while index > 0, isComment(statements[index - 1]) { index -= 1 }
             return statements[index].range.lowerBound
         }
-        return statements.first { $0.kind == .table(path: table, isArray: false) }?.range.upperBound ?? bytes.count
+        return statements.first { $0.kind == .table(path: table, isArray: false) }?.range.upperBound
+            ?? bytes.count
     }
 
     private func isComment(_ statement: Statement) -> Bool {
@@ -298,14 +311,16 @@ struct TomlDocument {
                 try scanner.endLine()
                 statements.append(Statement(kind: kind, range: start..<scanner.index, table: table))
             } catch {
-                throw ParseError(line: bytes[..<min(scanner.index, bytes.count)].filter { $0 == 10 }.count + 1)
+                throw ParseError(
+                    line: bytes[..<min(scanner.index, bytes.count)].filter { $0 == 10 }.count + 1)
             }
         }
         return statements
     }
 
     fileprivate static func isBareKeyByte(_ byte: UInt8) -> Bool {
-        (65...90).contains(byte) || (97...122).contains(byte) || (48...57).contains(byte) || byte == 95 || byte == 45
+        (65...90).contains(byte) || (97...122).contains(byte) || (48...57).contains(byte) || byte == 95
+            || byte == 45
     }
 
     /// Decodes a value span if it is a string; `nil` for any other type.
@@ -343,16 +358,28 @@ private struct Scanner {
         while true {
             skipSpaces()
             if peek == 35 { skipComment() }
-            if peek == 10 { index += 1; continue }
-            if peek == 13, index + 1 < bytes.count, bytes[index + 1] == 10 { index += 2; continue }
+            if peek == 10 {
+                index += 1
+                continue
+            }
+            if peek == 13, index + 1 < bytes.count, bytes[index + 1] == 10 {
+                index += 2
+                continue
+            }
             return
         }
     }
 
     mutating func endLine() throws {
         guard let byte = peek else { return }
-        if byte == 10 { index += 1; return }
-        if byte == 13, index + 1 < bytes.count, bytes[index + 1] == 10 { index += 2; return }
+        if byte == 10 {
+            index += 1
+            return
+        }
+        if byte == 13, index + 1 < bytes.count, bytes[index + 1] == 10 {
+            index += 2
+            return
+        }
         throw Failure()
     }
 
@@ -391,17 +418,29 @@ private struct Scanner {
             index += 1
             while true {
                 skipBlank()
-                if peek == 93 { index += 1; return }
+                if peek == 93 {
+                    index += 1
+                    return
+                }
                 try value()
                 skipBlank()
-                if peek == 44 { index += 1; continue }
-                if peek == 93 { index += 1; return }
+                if peek == 44 {
+                    index += 1
+                    continue
+                }
+                if peek == 93 {
+                    index += 1
+                    return
+                }
                 throw Failure()
             }
         case 123:
             index += 1
             skipBlank()
-            if peek == 125 { index += 1; return }
+            if peek == 125 {
+                index += 1
+                return
+            }
             while true {
                 skipBlank()
                 _ = try key()
@@ -412,10 +451,16 @@ private struct Scanner {
                 if peek == 44 {
                     index += 1
                     skipBlank()
-                    if peek == 125 { index += 1; return }
+                    if peek == 125 {
+                        index += 1
+                        return
+                    }
                     continue
                 }
-                if peek == 125 { index += 1; return }
+                if peek == 125 {
+                    index += 1
+                    return
+                }
                 throw Failure()
             }
         default:
@@ -425,7 +470,8 @@ private struct Scanner {
             while let byte = peek, !Self.endsBareValue(byte) { index += 1 }
             guard index > start else { throw Failure() }
             if index - start == 10, peek == 32, index + 1 < bytes.count, (48...57).contains(bytes[index + 1]),
-               bytes[start + 4] == 45 {
+                bytes[start + 4] == 45
+            {
                 index += 1
                 while let byte = peek, !Self.endsBareValue(byte) { index += 1 }
             }
@@ -433,7 +479,8 @@ private struct Scanner {
     }
 
     private static func endsBareValue(_ byte: UInt8) -> Bool {
-        byte == 32 || byte == 9 || byte == 10 || byte == 13 || byte == 44 || byte == 93 || byte == 125 || byte == 35
+        byte == 32 || byte == 9 || byte == 10 || byte == 13 || byte == 44 || byte == 93 || byte == 125
+            || byte == 35
     }
 
     func starts(with prefix: String) -> Bool {
@@ -454,12 +501,19 @@ private struct Scanner {
         while true {
             guard let byte = peek else { throw Failure() }
             if byte == quote {
-                if !multiline { index += 1; return String(decoding: decoded, as: UTF8.self) }
+                if !multiline {
+                    index += 1
+                    return String(decoding: decoded, as: UTF8.self)
+                }
                 if starts(with: quote == 34 ? "\"\"\"" : "'''") {
                     index += 3
                     // Up to two quotes may directly precede the closing delimiter.
                     var extra = 0
-                    while extra < 2, peek == quote { decoded.append(quote); index += 1; extra += 1 }
+                    while extra < 2, peek == quote {
+                        decoded.append(quote)
+                        index += 1
+                        extra += 1
+                    }
                     return String(decoding: decoded, as: UTF8.self)
                 }
                 decoded.append(byte)
@@ -471,19 +525,35 @@ private struct Scanner {
                 index += 1
                 guard let escaped = peek else { throw Failure() }
                 switch escaped {
-                case 98: decoded.append(8); index += 1
-                case 116: decoded.append(9); index += 1
-                case 110: decoded.append(10); index += 1
-                case 102: decoded.append(12); index += 1
-                case 114: decoded.append(13); index += 1
-                case 101: decoded.append(27); index += 1
-                case 34, 92: decoded.append(escaped); index += 1
+                case 98:
+                    decoded.append(8)
+                    index += 1
+                case 116:
+                    decoded.append(9)
+                    index += 1
+                case 110:
+                    decoded.append(10)
+                    index += 1
+                case 102:
+                    decoded.append(12)
+                    index += 1
+                case 114:
+                    decoded.append(13)
+                    index += 1
+                case 101:
+                    decoded.append(27)
+                    index += 1
+                case 34, 92:
+                    decoded.append(escaped)
+                    index += 1
                 case 117, 85, 120:
                     let length = escaped == 117 ? 4 : escaped == 85 ? 8 : 2
                     index += 1
                     guard index + length <= bytes.count,
-                          let value = UInt32(String(decoding: bytes[index..<(index + length)], as: UTF8.self), radix: 16),
-                          let scalar = Unicode.Scalar(value) else { throw Failure() }
+                        let value = UInt32(
+                            String(decoding: bytes[index..<(index + length)], as: UTF8.self), radix: 16),
+                        let scalar = Unicode.Scalar(value)
+                    else { throw Failure() }
                     decoded += Array(String(scalar).utf8)
                     index += length
                 case 32, 9, 10, 13:

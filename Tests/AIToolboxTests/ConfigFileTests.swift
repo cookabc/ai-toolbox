@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 final class ConfigFileTests: XCTestCase {
@@ -18,7 +19,8 @@ final class ConfigFileTests: XCTestCase {
     /// update the repository's file and leave the link in place.
     func testWritesThroughSymbolicLinks() throws {
         let dotfiles = root.appending(path: "dotfiles/config.toml")
-        try FileManager.default.createDirectory(at: dotfiles.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: dotfiles.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("old".utf8).write(to: dotfiles)
         let link = root.appending(path: "config.toml")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: dotfiles)
@@ -28,8 +30,10 @@ final class ConfigFileTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: link.path), dotfiles.path)
         XCTAssertEqual(try String(contentsOf: dotfiles, encoding: .utf8), "new")
         let backup = URL(fileURLWithPath: link.path + ConfigFile.backupSuffix)
-        let backupType = try FileManager.default.attributesOfItem(atPath: backup.path)[.type] as? FileAttributeType
-        XCTAssertEqual(backupType, .typeRegular, "the backup holds the old contents, not a link to the new ones")
+        let backupType =
+            try FileManager.default.attributesOfItem(atPath: backup.path)[.type] as? FileAttributeType
+        XCTAssertEqual(
+            backupType, .typeRegular, "the backup holds the old contents, not a link to the new ones")
         XCTAssertEqual(try String(contentsOf: backup, encoding: .utf8), "old")
     }
 
@@ -40,8 +44,11 @@ final class ConfigFileTests: XCTestCase {
         try ConfigFile.update(file) { _ in Data("{\"a\":1}".utf8) }
         let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
-        XCTAssertNotEqual(attributes[.systemFileNumber] as? Int, before, "a new inode means rename, not rewrite in place")
-        let leftovers = try FileManager.default.contentsOfDirectory(atPath: root.path).filter { $0.hasSuffix(".tmp") }
+        XCTAssertNotEqual(
+            attributes[.systemFileNumber] as? Int, before, "a new inode means rename, not rewrite in place")
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: root.path).filter {
+            $0.hasSuffix(".tmp")
+        }
         XCTAssertEqual(leftovers, [])
     }
 

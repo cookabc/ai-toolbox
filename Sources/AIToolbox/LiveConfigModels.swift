@@ -66,7 +66,8 @@ struct ClaudeLiveSettings: Equatable, Sendable {
         self.extraEnv = extraEnv
     }
 
-    static let empty = ClaudeLiveSettings(baseURL: "", model: "", hasAPIKey: false, maskedAPIKey: L10n.Config.notSet)
+    static let empty = ClaudeLiveSettings(
+        baseURL: "", model: "", hasAPIKey: false, maskedAPIKey: L10n.Config.notSet)
 
     var hasOverlay: Bool { !baseURL.isEmpty || !model.isEmpty || hasAPIKey }
 }
@@ -86,7 +87,8 @@ struct CodexLiveSettings: Equatable, Sendable {
     var providers: [CodexProviderRecord]
 
     static let official = CodexLiveSettings(
-        model: "", currentProviderID: CodexTomlEditor.builtInOpenAI.id, providers: [CodexTomlEditor.builtInOpenAI]
+        model: "", currentProviderID: CodexTomlEditor.builtInOpenAI.id,
+        providers: [CodexTomlEditor.builtInOpenAI]
     )
 }
 

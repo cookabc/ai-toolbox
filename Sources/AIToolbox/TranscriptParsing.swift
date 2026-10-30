@@ -14,9 +14,10 @@ struct TranscriptTokens: Sendable {
     var reportedMask: UInt8 = 0
 
     var reported: Set<UsageMetric> {
-        Set(UsageMetric.allCases.enumerated().compactMap { index, metric in
-            reportedMask & (1 << index) != 0 ? metric : nil
-        })
+        Set(
+            UsageMetric.allCases.enumerated().compactMap { index, metric in
+                reportedMask & (1 << index) != 0 ? metric : nil
+            })
     }
 
     mutating func report(_ metric: UsageMetric) {
@@ -71,11 +72,14 @@ struct TranscriptLineParser {
         switch record.type {
         case "token_usage_record":
             guard let payload = record.payload, let response = nonempty(payload.response_id),
-                  let usage = payload.usage else { throw TranscriptParseError.invalidRecord }
+                let usage = payload.usage
+            else { throw TranscriptParseError.invalidRecord }
             let tokens = try usage.codexTokens()
-            records.insert(TranscriptKey(message: response, request: nil), TranscriptSample(
-                tokens: tokens, model: nil, turnID: nonempty(payload.turn_id), date: date
-            ))
+            records.insert(
+                TranscriptKey(message: response, request: nil),
+                TranscriptSample(
+                    tokens: tokens, model: nil, turnID: nonempty(payload.turn_id), date: date
+                ))
             if let turn = nonempty(payload.turn_id) { records.noteTurn(turn, at: date) }
         case "turn_context":
             guard let payload = record.payload, let turn = nonempty(payload.turn_id) else { return }
@@ -83,8 +87,9 @@ struct TranscriptLineParser {
             if let model = nonempty(payload.model) { records.turnModels[turn] = intern(model) }
         case "response_item":
             guard let payload = record.payload, let type = payload.type,
-                  type.hasSuffix("_call"),
-                  let call = nonempty(payload.call_id) ?? nonempty(payload.id) else { return }
+                type.hasSuffix("_call"),
+                let call = nonempty(payload.call_id) ?? nonempty(payload.id)
+            else { return }
             records.noteTool(call, at: date)
         default:
             return
@@ -99,22 +104,26 @@ struct TranscriptLineParser {
         switch record.type {
         case "assistant":
             guard let message = record.message, let id = nonempty(message.id),
-                  let usage = message.usage else { throw TranscriptParseError.invalidRecord }
+                let usage = message.usage
+            else { throw TranscriptParseError.invalidRecord }
             // Written by Claude Code itself for errors and interruptions; no request
             // reached a model.
             if message.model == "<synthetic>" { return }
-            records.insert(TranscriptKey(message: id, request: nonempty(record.requestId)), TranscriptSample(
-                tokens: try usage.claudeTokens(), model: nonempty(message.model).map { intern($0) },
-                turnID: nil, date: date
-            ))
+            records.insert(
+                TranscriptKey(message: id, request: nonempty(record.requestId)),
+                TranscriptSample(
+                    tokens: try usage.claudeTokens(), model: nonempty(message.model).map { intern($0) },
+                    turnID: nil, date: date
+                ))
             for tool in message.toolUseIDs { records.noteTool(tool, at: date) }
         case "user":
             // A turn is one prompt the model answers: typed text or a notification it
             // is asked to act on. Tool results, meta records and local slash commands
             // share the prompt's ID or never reach the model, so they are not turns.
             guard record.isSidechain != true, record.isMeta != true,
-                  let message = record.message, message.startsTurn,
-                  let turn = nonempty(record.promptId) ?? nonempty(record.uuid) else { return }
+                let message = record.message, message.startsTurn,
+                let turn = nonempty(record.promptId) ?? nonempty(record.uuid)
+            else { return }
             records.noteTurn(turn, at: date)
         default:
             return
@@ -254,10 +263,11 @@ private struct ClaudeLine: Decodable {
             if role == "assistant" {
                 usage = try c.decodeIfPresent(RawUsage.self, forKey: .usage)
                 let blocks = (try? c.decodeIfPresent([AssistantBlock].self, forKey: .content)) ?? nil
-                toolUseIDs = blocks?.compactMap { block in
-                    guard block.type == "tool_use" || block.type == "server_tool_use" else { return nil }
-                    return block.id
-                } ?? []
+                toolUseIDs =
+                    blocks?.compactMap { block in
+                        guard block.type == "tool_use" || block.type == "server_tool_use" else { return nil }
+                        return block.id
+                    } ?? []
                 startsTurn = false
             } else {
                 usage = nil
@@ -265,7 +275,8 @@ private struct ClaudeLine: Decodable {
                 if let text = try? c.decodeIfPresent(String.self, forKey: .content) {
                     startsTurn = Self.isPrompt(text)
                 } else if let blocks = try? c.decodeIfPresent([UserBlock].self, forKey: .content) {
-                    startsTurn = blocks.contains { $0.type == "text" && Self.isPrompt($0.text ?? "") }
+                    startsTurn =
+                        blocks.contains { $0.type == "text" && Self.isPrompt($0.text ?? "") }
                         || blocks.contains { $0.type == "image" }
                 } else {
                     startsTurn = false
@@ -277,7 +288,8 @@ private struct ClaudeLine: Decodable {
         private static func isPrompt(_ text: String) -> Bool {
             let trimmed = text.drop { $0.isWhitespace }
             guard !trimmed.isEmpty else { return false }
-            return !(trimmed.hasPrefix("<local-command-") || trimmed.hasPrefix("<command-name>")
+            return
+                !(trimmed.hasPrefix("<local-command-") || trimmed.hasPrefix("<command-name>")
                 || trimmed.hasPrefix("<command-message>"))
         }
     }
@@ -333,18 +345,24 @@ private struct RawUsage: Decodable {
     let output_details: OutputDetails?
 
     struct InputDetails: Decodable { let cached_tokens: Int64? }
-    struct OutputDetails: Decodable { let reasoning_tokens: Int64?; let thinking_tokens: Int64? }
+    struct OutputDetails: Decodable {
+        let reasoning_tokens: Int64?
+        let thinking_tokens: Int64?
+    }
 
     private var all: [Int64?] {
-        [input_tokens, output_tokens, reasoning_output_tokens, cached_input_tokens,
-         cache_read_input_tokens, cache_creation_input_tokens, cache_write_input_tokens,
-         input_tokens_details?.cached_tokens, output_tokens_details?.reasoning_tokens,
-         output_tokens_details?.thinking_tokens, output_details?.thinking_tokens]
+        [
+            input_tokens, output_tokens, reasoning_output_tokens, cached_input_tokens,
+            cache_read_input_tokens, cache_creation_input_tokens, cache_write_input_tokens,
+            input_tokens_details?.cached_tokens, output_tokens_details?.reasoning_tokens,
+            output_tokens_details?.thinking_tokens, output_details?.thinking_tokens,
+        ]
     }
 
     private func validated() throws {
         guard input_tokens != nil || output_tokens != nil,
-              all.allSatisfy({ ($0 ?? 0) >= 0 }) else { throw TranscriptParseError.invalidRecord }
+            all.allSatisfy({ ($0 ?? 0) >= 0 })
+        else { throw TranscriptParseError.invalidRecord }
     }
 
     /// Codex follows the OpenAI convention: `input_tokens` is the whole prompt and
@@ -378,10 +396,17 @@ private struct RawUsage: Decodable {
             input: saturating(saturating(input_tokens ?? 0, read ?? 0), write ?? 0),
             output: output_tokens ?? 0
         )
-        if let read { tokens.cacheRead = read; tokens.report(.cacheRead) }
-        if let write { tokens.cacheWrite = write; tokens.report(.cacheWrite) }
+        if let read {
+            tokens.cacheRead = read
+            tokens.report(.cacheRead)
+        }
+        if let write {
+            tokens.cacheWrite = write
+            tokens.report(.cacheWrite)
+        }
         if let thinking = output_tokens_details?.thinking_tokens ?? output_details?.thinking_tokens
-            ?? output_tokens_details?.reasoning_tokens {
+            ?? output_tokens_details?.reasoning_tokens
+        {
             tokens.reasoning = thinking
             tokens.report(.reasoning)
         }
@@ -422,11 +447,11 @@ final class TranscriptDates {
                 return result
             }
             guard let year = number(0, 4), bytes[4] == 45, let month = number(5, 2), bytes[7] == 45,
-                  let day = number(8, 2), bytes[10] == 84 || bytes[10] == 116,
-                  let hour = number(11, 2), bytes[13] == 58, let minute = number(14, 2), bytes[16] == 58,
-                  let second = number(17, 2),
-                  (1...12).contains(month), day >= 1, day <= daysIn(month: month, year: year),
-                  hour < 24, minute < 60, second < 60
+                let day = number(8, 2), bytes[10] == 84 || bytes[10] == 116,
+                let hour = number(11, 2), bytes[13] == 58, let minute = number(14, 2), bytes[16] == 58,
+                let second = number(17, 2),
+                (1...12).contains(month), day >= 1, day <= daysIn(month: month, year: year),
+                hour < 24, minute < 60, second < 60
             else { return nil }
 
             var index = 19
@@ -449,8 +474,9 @@ final class TranscriptDates {
                 index += 1
             case 43, 45:
                 guard index + 6 == count, bytes[index + 3] == 58,
-                      let hours = number(index + 1, 2), let minutes = number(index + 4, 2),
-                      hours < 24, minutes < 60 else { return nil }
+                    let hours = number(index + 1, 2), let minutes = number(index + 4, 2),
+                    hours < 24, minutes < 60
+                else { return nil }
                 offset = (hours * 3_600 + minutes * 60) * (bytes[index] == 45 ? -1 : 1)
                 index += 6
             default:
@@ -537,8 +563,9 @@ enum TranscriptJSONL {
                 return
             }
             guard bytes.contains(where: { $0 != 32 && $0 != 9 && $0 != 13 }), mayMatter(bytes) else { return }
-            let line = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: bytes.baseAddress!),
-                            count: bytes.count, deallocator: .none)
+            let line = Data(
+                bytesNoCopy: UnsafeMutableRawPointer(mutating: bytes.baseAddress!),
+                count: bytes.count, deallocator: .none)
             do { try consume(line) } catch { if mentionsUsage(bytes) { skipped += 1 } }
         }
 
@@ -592,8 +619,9 @@ enum TranscriptJSONL {
                 if mayMatter(bytes) { try? consume(carry) }
             }
         }
-        return Result(skipped: skipped, endOffset: endOffset,
-                      fingerprint: fingerprint(of: path, upTo: endOffset))
+        return Result(
+            skipped: skipped, endOffset: endOffset,
+            fingerprint: fingerprint(of: path, upTo: endOffset))
     }
 
     /// The first and last `fingerprintBytes` of the file's first `offset` bytes.
@@ -606,7 +634,8 @@ enum TranscriptJSONL {
         var result = Data(count: length * 2)
         let complete = result.withUnsafeMutableBytes { bytes -> Bool in
             pread(descriptor, bytes.baseAddress, length, 0) == length
-                && pread(descriptor, bytes.baseAddress! + length, length, off_t(offset) - off_t(length)) == length
+                && pread(descriptor, bytes.baseAddress! + length, length, off_t(offset) - off_t(length))
+                    == length
         }
         if !complete { result.removeAll() }
         return result

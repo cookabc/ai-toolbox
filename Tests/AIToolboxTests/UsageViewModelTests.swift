@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 @MainActor
@@ -92,8 +93,9 @@ final class UsageViewModelTests: XCTestCase {
     /// report the new day as empty, not keep yesterday's number.
     func testTodayComesFromTheCurrentDate() async throws {
         let clock = Clock(Date())
-        let model = UsageViewModel(loader: { [snapshot = makeSnapshot(todayOutput: 500)] in snapshot },
-                                   now: { clock.now })
+        let model = UsageViewModel(
+            loader: { [snapshot = makeSnapshot(todayOutput: 500)] in snapshot },
+            now: { clock.now })
         model.refresh()
         try await waitUntil { !model.isRefreshing }
         XCTAssertEqual(model.today()?.outputTokens, 500)
@@ -176,12 +178,14 @@ final class UsageViewModelTests: XCTestCase {
     }
 
     private func makeSnapshot(todayOutput: Int64, on date: Date = Date()) -> UsageSnapshot {
-        let today = UsageTotals(requests: 3, turns: 2, toolCalls: 1, inputTokens: 5_000,
-                                cacheReadTokens: 4_000, outputTokens: todayOutput, reasoningTokens: 100)
+        let today = UsageTotals(
+            requests: 3, turns: 2, toolCalls: 1, inputTokens: 5_000,
+            cacheReadTokens: 4_000, outputTokens: todayOutput, reasoningTokens: 100)
         return UsageSnapshot(
             refreshedAt: date,
-            totals: UsageTotals(requests: 20, turns: 10, toolCalls: 4, inputTokens: 100_000,
-                                cacheReadTokens: 90_000, outputTokens: todayOutput + 5_000, reasoningTokens: 1_000),
+            totals: UsageTotals(
+                requests: 20, turns: 10, toolCalls: 4, inputTokens: 100_000,
+                cacheReadTokens: 90_000, outputTokens: todayOutput + 5_000, reasoningTokens: 1_000),
             daily: [DailyUsage(date: Calendar.current.startOfDay(for: date), totals: today)],
             models: []
         )

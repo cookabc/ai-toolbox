@@ -36,14 +36,18 @@ final class UsageViewModel: ObservableObject {
         self.now = now
     }
 
-    init(providers: [any UsageProvider], preferences: UserDefaults? = .standard,
-         now: @escaping @Sendable () -> Date = { Date() }) {
-        loaders = Dictionary(uniqueKeysWithValues: providers.map { provider in
-            (provider.id, { try provider.load() } as UsageLoader)
-        })
+    init(
+        providers: [any UsageProvider], preferences: UserDefaults? = .standard,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
+        loaders = Dictionary(
+            uniqueKeysWithValues: providers.map { provider in
+                (provider.id, { try provider.load() } as UsageLoader)
+            })
         self.preferences = preferences
         self.now = now
-        selectedProvider = UsageProviderID(rawValue: preferences?.string(forKey: Self.selectionKey) ?? "") ?? .codex
+        selectedProvider =
+            UsageProviderID(rawValue: preferences?.string(forKey: Self.selectionKey) ?? "") ?? .codex
     }
 
     func start() {
@@ -167,7 +171,8 @@ final class UsageViewModel: ObservableObject {
 
     /// What the menu-bar item says to VoiceOver.
     var statusText: String {
-        L10n.App.menuBarStatus(tool: selectedProvider.title, todayOutput: today().map { Format.token($0.outputTokens) })
+        L10n.App.menuBarStatus(
+            tool: selectedProvider.title, todayOutput: today().map { Format.token($0.outputTokens) })
     }
 
     func sourceWarning(_ id: UsageProviderID) -> String? {

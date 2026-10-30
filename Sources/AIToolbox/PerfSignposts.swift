@@ -9,16 +9,16 @@ import os
 ///     /usr/bin/log show --last 5m --predicate 'subsystem == "io.github.cookabc.ai-toolbox"' --info --debug --style compact
 enum PerfSignpost {
     #if DEBUG
-    private static let log = OSLog(subsystem: "io.github.cookabc.ai-toolbox", category: "perf")
-    private static let logger = Logger(subsystem: "io.github.cookabc.ai-toolbox", category: "perf")
+        private static let log = OSLog(subsystem: "io.github.cookabc.ai-toolbox", category: "perf")
+        private static let logger = Logger(subsystem: "io.github.cookabc.ai-toolbox", category: "perf")
     #endif
 
     /// One `@Published` write, i.e. one whole-tree body recompute while the panel is visible.
     static func publish(_ field: String) {
         #if DEBUG
-        let id = OSSignpostID(log: log)
-        os_signpost(.event, log: log, name: "publish", signpostID: id)
-        logger.info("publish field=\(field, privacy: .public)")
+            let id = OSSignpostID(log: log)
+            os_signpost(.event, log: log, name: "publish", signpostID: id)
+            logger.info("publish field=\(field, privacy: .public)")
         #endif
     }
 }

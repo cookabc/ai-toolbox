@@ -282,10 +282,13 @@ final class LiveConfigViewModel: ObservableObject {
             let (saved, wasActive) = try draftProvider(for: target)
             let removing = claudeRemovingKeys(for: saved, among: providers)
             let appliesLive = activate || wasActive
-            perform(target, onSuccess: { [weak self] in
-                self?.probeStates.removeValue(forKey: saved.id)
-                self?.cancelDraft()
-            }) { store in
+            perform(
+                target,
+                onSuccess: { [weak self] in
+                    self?.probeStates.removeValue(forKey: saved.id)
+                    self?.cancelDraft()
+                }
+            ) { store in
                 var note: String?
                 if appliesLive {
                     note = try store.activate(saved, removingClaudeKeys: removing)
@@ -300,9 +303,12 @@ final class LiveConfigViewModel: ObservableObject {
                 if !appliesLive {
                     do { try store.syncCodexTable(saved) } catch { note = error.localizedDescription }
                 }
-                let base = activate ? L10n.Config.savedAndSwitched(saved.name)
-                    : wasActive ? L10n.Config.savedLiveUpdated(saved.name)
-                    : L10n.Config.savedLiveUnchanged(saved.name)
+                let base =
+                    activate
+                    ? L10n.Config.savedAndSwitched(saved.name)
+                    : wasActive
+                        ? L10n.Config.savedLiveUpdated(saved.name)
+                        : L10n.Config.savedLiveUnchanged(saved.name)
                 return statusLine(base, note: note)
             }
         } catch {
@@ -356,11 +362,14 @@ final class LiveConfigViewModel: ObservableObject {
             setError(LiveConfigError.libraryUnreadable.localizedDescription, for: provider.app)
             return
         }
-        perform(provider.app, onSuccess: { [weak self] in
-            guard let self else { return }
-            probeStates.removeValue(forKey: provider.id)
-            if case .edit(let editing) = draftMode, editing == provider.id { cancelDraft() }
-        }) { store in
+        perform(
+            provider.app,
+            onSuccess: { [weak self] in
+                guard let self else { return }
+                probeStates.removeValue(forKey: provider.id)
+                if case .edit(let editing) = draftMode, editing == provider.id { cancelDraft() }
+            }
+        ) { store in
             // The live config goes first: if it cannot be edited, the library still
             // describes it and nothing is half done.
             if provider.app == .codex { try store.removeCodexProvider(provider.slug) }
@@ -385,33 +394,35 @@ final class LiveConfigViewModel: ObservableObject {
                     guard live.hasOverlay else { return }
                     let name = URL(string: live.baseURL)?.host ?? L10n.Config.importedClaudeName
                     let taken = Set(providers.filter { $0.app == .claude }.map(\.slug))
-                    providers.append(StoredProvider(
-                        app: .claude,
-                        name: name,
-                        slug: ProviderSlug.suggest(from: name, existing: taken),
-                        baseURL: live.baseURL,
-                        model: live.model,
-                        apiKey: secret,
-                        credential: live.credential,
-                        // Captures the model aliases and other per-provider keys that are
-                        // in settings.json right now, so importing a working setup keeps
-                        // it working instead of dropping half of it.
-                        extraEnv: live.extraEnv
-                    ))
+                    providers.append(
+                        StoredProvider(
+                            app: .claude,
+                            name: name,
+                            slug: ProviderSlug.suggest(from: name, existing: taken),
+                            baseURL: live.baseURL,
+                            model: live.model,
+                            apiKey: secret,
+                            credential: live.credential,
+                            // Captures the model aliases and other per-provider keys that are
+                            // in settings.json right now, so importing a working setup keeps
+                            // it working instead of dropping half of it.
+                            extraEnv: live.extraEnv
+                        ))
                     count = 1
                 case .codex:
                     guard let text = store.readCodex().text else { return }
                     let live = try CodexTomlEditor.load(text)
                     let known = Set(providers.filter { $0.app == .codex }.map(\.slug))
                     for record in live.providers where !record.isBuiltIn && !known.contains(record.id) {
-                        providers.append(StoredProvider(
-                            app: .codex,
-                            name: record.name,
-                            slug: record.id,
-                            baseURL: record.baseURL,
-                            model: record.id == live.currentProviderID ? live.model : "",
-                            apiKey: CodexTomlEditor.secret(in: text, id: record.id)
-                        ))
+                        providers.append(
+                            StoredProvider(
+                                app: .codex,
+                                name: record.name,
+                                slug: record.id,
+                                baseURL: record.baseURL,
+                                model: record.id == live.currentProviderID ? live.model : "",
+                                apiKey: CodexTomlEditor.secret(in: text, id: record.id)
+                            ))
                         count += 1
                     }
                 }
@@ -462,15 +473,17 @@ final class LiveConfigViewModel: ObservableObject {
         guard !name.isEmpty else { throw LiveConfigError.missingField(L10n.Config.name) }
         guard !baseURL.isEmpty else { throw LiveConfigError.missingField(L10n.Config.baseURL) }
         guard let components = URLComponents(string: baseURL),
-              ["http", "https"].contains(components.scheme?.lowercased() ?? ""),
-              !(components.host ?? "").isEmpty else {
+            ["http", "https"].contains(components.scheme?.lowercased() ?? ""),
+            !(components.host ?? "").isEmpty
+        else {
             throw LiveConfigError.missingField(L10n.Config.fieldBaseURLScheme)
         }
         let key = draftAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let model = draftModel.trimmingCharacters(in: .whitespacesAndNewlines)
         // Only Claude Code has these keys. Blank fields are dropped, so clearing one
         // means "hand it back" rather than "write an empty value".
-        let extraEnv = target == .claude
+        let extraEnv =
+            target == .claude
             ? draftExtraEnv.compactMapValues { value -> String? in
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 return trimmed.isEmpty ? nil : trimmed
@@ -500,13 +513,17 @@ final class LiveConfigViewModel: ObservableObject {
                 slug = ProviderSlug.suggest(from: name, existing: taken)
             } else if target == .codex {
                 guard ProviderIDRules.isValid(slug) else { throw LiveConfigError.invalidProviderID }
-                guard !ProviderIDRules.reservedCodexIDs.contains(slug) else { throw LiveConfigError.reservedProviderID }
+                guard !ProviderIDRules.reservedCodexIDs.contains(slug) else {
+                    throw LiveConfigError.reservedProviderID
+                }
                 guard !saved.contains(slug) else { throw LiveConfigError.duplicateProviderID(slug) }
             }
-            return (StoredProvider(
-                app: target, name: name, slug: slug, baseURL: baseURL, model: model,
-                apiKey: key, credential: draftCredential, extraEnv: extraEnv
-            ), false)
+            return (
+                StoredProvider(
+                    app: target, name: name, slug: slug, baseURL: baseURL, model: model,
+                    apiKey: key, credential: draftCredential, extraEnv: extraEnv
+                ), false
+            )
         case .none:
             throw LiveConfigError.missingField(L10n.Config.fieldProvider)
         }
@@ -516,7 +533,9 @@ final class LiveConfigViewModel: ObservableObject {
     /// to the write path is what stops one relay's model aliases from lingering
     /// after a switch to a different relay. Keys no provider claims are never in
     /// this set, so a hand-written setting is always left alone.
-    private func claudeRemovingKeys(for provider: StoredProvider, among providers: [StoredProvider]) -> Set<String> {
+    private func claudeRemovingKeys(for provider: StoredProvider, among providers: [StoredProvider]) -> Set<
+        String
+    > {
         guard provider.app == .claude else { return [] }
         var keys = Set<String>()
         for other in providers where other.app == .claude && other.id != provider.id {
@@ -639,12 +658,13 @@ extension LiveConfigViewModel {
         }
         // One seeded probe result so the rendered panel shows the reachability badge.
         if let sample = providers.first(where: { $0.app == app }) {
-            probeStates[sample.id] = .done(EndpointProbeResult(
-                verdict: .healthy,
-                status: 200,
-                latency: 0.34,
-                detail: L10n.Probe.healthyDetail
-            ))
+            probeStates[sample.id] = .done(
+                EndpointProbeResult(
+                    verdict: .healthy,
+                    status: 200,
+                    latency: 0.34,
+                    detail: L10n.Probe.healthyDetail
+                ))
         }
     }
 
@@ -681,17 +701,21 @@ extension LiveConfigViewModel {
                 app: app, name: "Local gateway (experimental)", slug: "local-lab",
                 baseURL: "http://192.168.1.20:8080/v1", model: "", apiKey: "")
             providers += [failing, idle]
-            probeStates[failing.id] = .done(EndpointProbeResult(
-                verdict: .badRoute, status: 404, latency: 0.128,
-                detail: app == .claude ? L10n.Probe.badRouteClaude : L10n.Probe.badRouteCodex))
+            probeStates[failing.id] = .done(
+                EndpointProbeResult(
+                    verdict: .badRoute, status: 404, latency: 0.128,
+                    detail: app == .claude ? L10n.Probe.badRouteClaude : L10n.Probe.badRouteCodex))
             probeStates[idle.id] = .running
-            messages[app] = Message(text: L10n.Config.switched(providers.first { $0.app == app }!.name), isError: false)
+            messages[app] = Message(
+                text: L10n.Config.switched(providers.first { $0.app == app }!.name), isError: false)
         case .unmanaged:
             switch app {
             case .codex:
-                codexLive.providers.append(CodexProviderRecord(
-                    id: "hand-written", name: "hand-written", baseURL: "https://manual.example/v1",
-                    hasAPIKey: true, maskedAPIKey: SecretDisplay.mask("sk-manual-0000"), isBuiltIn: false))
+                codexLive.providers.append(
+                    CodexProviderRecord(
+                        id: "hand-written", name: "hand-written", baseURL: "https://manual.example/v1",
+                        hasAPIKey: true, maskedAPIKey: SecretDisplay.mask("sk-manual-0000"), isBuiltIn: false)
+                )
             case .claude:
                 claudeLive = ClaudeLiveSettings(
                     baseURL: "https://unsaved.example", model: "claude-sonnet-4", hasAPIKey: true,
@@ -702,7 +726,8 @@ extension LiveConfigViewModel {
             libraryReadError = L10n.Config.libraryUnreadable(
                 path: "~/Library/Application Support/AIToolbox/providers.json",
                 reason: "The data format is invalid.")
-            messages[app] = Message(text: LiveConfigError.libraryUnreadable.localizedDescription, isError: true)
+            messages[app] = Message(
+                text: LiveConfigError.libraryUnreadable.localizedDescription, isError: true)
         case .official:
             providers.removeAll { $0.app == app }
             probeStates = [:]

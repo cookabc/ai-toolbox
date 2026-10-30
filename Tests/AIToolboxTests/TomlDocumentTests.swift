@@ -1,42 +1,43 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 final class TomlDocumentTests: XCTestCase {
     /// Shaped like a real `~/.codex/config.toml`: multi-line arrays, quoted keys with
     /// dots and slashes, comments, blank lines.
     private let realistic = """
-    # Codex configuration
-    model_auto_compact_token_limit = 900000
-    web_search = "live"
-    notify = [
-        "/Users/someone/.codex/computer-use/Codex Computer Use.app/Contents/MacOS/Client",
-        "turn-ended", # trailing comment inside an array
-    ]
-    model_provider = "openai" # default provider
-    model = 'gpt-6-sol'
+        # Codex configuration
+        model_auto_compact_token_limit = 900000
+        web_search = "live"
+        notify = [
+            "/Users/someone/.codex/computer-use/Codex Computer Use.app/Contents/MacOS/Client",
+            "turn-ended", # trailing comment inside an array
+        ]
+        model_provider = "openai" # default provider
+        model = 'gpt-6-sol'
 
-    [marketplaces.openai-bundled]
-    source_type = "local"
+        [marketplaces.openai-bundled]
+        source_type = "local"
 
-    [plugins."documents@openai-primary-runtime"]
-    enabled = true
+        [plugins."documents@openai-primary-runtime"]
+        enabled = true
 
-    [projects."/Users/someone/Documents"]
-    trust_level = "trusted"
+        [projects."/Users/someone/Documents"]
+        trust_level = "trusted"
 
-    [profiles.fast] # quick profile
-    model = "gpt-6-luna"
-    matrix = [
-      [1, 2],
-      [3, 4]
-    ]
-    developer_instructions = \"\"\"
-    Answer like this:
-    [summary]
-    model = "not a key"
-    \"\"\"
-    """
+        [profiles.fast] # quick profile
+        model = "gpt-6-luna"
+        matrix = [
+          [1, 2],
+          [3, 4]
+        ]
+        developer_instructions = \"\"\"
+        Answer like this:
+        [summary]
+        model = "not a key"
+        \"\"\"
+        """
 
     func testUntouchedFilesRoundTripExactly() throws {
         XCTAssertEqual(try TomlDocument(realistic).text, realistic)
@@ -47,34 +48,40 @@ final class TomlDocumentTests: XCTestCase {
     func testReadsOnlyWhatIsReallyAtTheRoot() throws {
         let document = try TomlDocument(realistic)
         XCTAssertEqual(document.string("model"), "gpt-6-sol")
-        XCTAssertEqual(document.string("model_provider"), "openai", "the trailing comment is not part of the value")
-        XCTAssertEqual(document.string("model", in: ["profiles", "fast"]), "gpt-6-luna",
-                       "a header with a comment after it is still a header")
+        XCTAssertEqual(
+            document.string("model_provider"), "openai", "the trailing comment is not part of the value")
+        XCTAssertEqual(
+            document.string("model", in: ["profiles", "fast"]), "gpt-6-luna",
+            "a header with a comment after it is still a header")
         XCTAssertNil(document.string("summary"))
         XCTAssertEqual(document.childTables(of: ["plugins"]), ["documents@openai-primary-runtime"])
-        XCTAssertEqual(document.string("trust_level", in: ["projects", "/Users/someone/Documents"]), "trusted")
-        XCTAssertEqual(document.string("developer_instructions", in: ["profiles", "fast"]),
-                       "Answer like this:\n[summary]\nmodel = \"not a key\"\n")
+        XCTAssertEqual(
+            document.string("trust_level", in: ["projects", "/Users/someone/Documents"]), "trusted")
+        XCTAssertEqual(
+            document.string("developer_instructions", in: ["profiles", "fast"]),
+            "Answer like this:\n[summary]\nmodel = \"not a key\"\n")
     }
 
     /// The old line-based editor did not recognise `[profiles.fast] # …` as a
     /// header, so it took the profile's `model` for the root one and rewrote it.
     func testSettingARootKeyNeverTouchesATable() throws {
         let text = """
-        model_provider = "openai"
+            model_provider = "openai"
 
-        [profiles.fast] # quick profile
-        model = "gpt-5-mini"
-        """
+            [profiles.fast] # quick profile
+            model = "gpt-5-mini"
+            """
         var document = try TomlDocument(text)
         try document.setString("model", "k3", after: "model_provider")
-        XCTAssertEqual(document.text, """
-        model_provider = "openai"
-        model = "k3"
+        XCTAssertEqual(
+            document.text,
+            """
+            model_provider = "openai"
+            model = "k3"
 
-        [profiles.fast] # quick profile
-        model = "gpt-5-mini"
-        """)
+            [profiles.fast] # quick profile
+            model = "gpt-5-mini"
+            """)
     }
 
     func testReplacingAValueKeepsItsKeySpellingAndComment() throws {
@@ -92,7 +99,8 @@ final class TomlDocumentTests: XCTestCase {
     func testRootKeysAreInsertedAboveTheFirstTableAndItsComment() throws {
         var document = try TomlDocument("# Providers\n[model_providers.relay]\nname = \"R\"\n")
         try document.setString("model_provider", "relay")
-        XCTAssertEqual(document.text, "model_provider = \"relay\"\n# Providers\n[model_providers.relay]\nname = \"R\"\n")
+        XCTAssertEqual(
+            document.text, "model_provider = \"relay\"\n# Providers\n[model_providers.relay]\nname = \"R\"\n")
     }
 
     func testInsertionIntoAFileWithoutTrailingNewline() throws {
@@ -109,43 +117,49 @@ final class TomlDocumentTests: XCTestCase {
         var document = try TomlDocument("model = \"a\"\r\n\r\n[tui]\r\ntheme = \"dark\"\r\n")
         try document.setString("model_provider", "relay", after: "model")
         try document.appendTable(["model_providers", "relay"], values: [("name", "R")])
-        XCTAssertEqual(document.text,
-                       "model = \"a\"\r\nmodel_provider = \"relay\"\r\n\r\n[tui]\r\ntheme = \"dark\"\r\n\r\n[model_providers.relay]\r\nname = \"R\"\r\n")
+        XCTAssertEqual(
+            document.text,
+            "model = \"a\"\r\nmodel_provider = \"relay\"\r\n\r\n[tui]\r\ntheme = \"dark\"\r\n\r\n[model_providers.relay]\r\nname = \"R\"\r\n"
+        )
     }
 
     /// A quoted header names the same table as a bare one. Missing that used to
     /// append a second definition, which Codex refuses to load.
     func testQuotedHeadersAreTheSameTable() throws {
         let text = "[model_providers.\"relay\"]\nname = \"Relay\"\nbase_url = \"https://a.test\"\n"
-        let next = try CodexTomlEditor.upsertProvider(text, id: "relay", name: "Relay", baseURL: "https://b.test",
-                                                     apiKey: nil, makeCurrent: false, model: nil)
+        let next = try CodexTomlEditor.upsertProvider(
+            text, id: "relay", name: "Relay", baseURL: "https://b.test",
+            apiKey: nil, makeCurrent: false, model: nil)
         XCTAssertEqual(next.components(separatedBy: "[model_providers.").count - 1, 1)
         XCTAssertEqual(CodexTomlEditor.providerFields(in: next, id: "relay")["base_url"], "https://b.test")
     }
 
     func testRemovingATableKeepsTheCommentThatIntroducesTheNextOne() throws {
-        var document = try TomlDocument("""
-        model = "m"
+        var document = try TomlDocument(
+            """
+            model = "m"
 
-        [model_providers.relay]
-        # the relay
-        name = "R"
+            [model_providers.relay]
+            # the relay
+            name = "R"
 
-        [model_providers.relay.http_headers]
-        X-Team = "a"
+            [model_providers.relay.http_headers]
+            X-Team = "a"
 
-        # Profiles below
-        [profiles.x]
-        model = "y"
-        """)
+            # Profiles below
+            [profiles.x]
+            model = "y"
+            """)
         try document.removeTable(["model_providers", "relay"])
-        XCTAssertEqual(document.text, """
-        model = "m"
+        XCTAssertEqual(
+            document.text,
+            """
+            model = "m"
 
-        # Profiles below
-        [profiles.x]
-        model = "y"
-        """)
+            # Profiles below
+            [profiles.x]
+            model = "y"
+            """)
     }
 
     func testRemovingTheLastTableLeavesNoDanglingBlankLine() throws {
@@ -169,15 +183,19 @@ final class TomlDocumentTests: XCTestCase {
             "[model_providers]\nrelay = { name = \"R\" }\n",
             "[model_providers]\nrelay.name = \"R\"\n",
         ] {
-            XCTAssertThrowsError(try CodexTomlEditor.upsertProvider(
-                text, id: "relay", name: "R", baseURL: "https://r.test", apiKey: nil, makeCurrent: true, model: nil
-            ), text) { XCTAssertEqual($0 as? LiveConfigError, .unsupportedCodexLayout("relay")) }
+            XCTAssertThrowsError(
+                try CodexTomlEditor.upsertProvider(
+                    text, id: "relay", name: "R", baseURL: "https://r.test", apiKey: nil, makeCurrent: true,
+                    model: nil
+                ), text
+            ) { XCTAssertEqual($0 as? LiveConfigError, .unsupportedCodexLayout("relay")) }
         }
         // An unrelated provider in a `[model_providers]` table is no obstacle.
-        XCTAssertNoThrow(try CodexTomlEditor.upsertProvider(
-            "[model_providers]\nother = { name = \"O\" }\n", id: "relay", name: "R",
-            baseURL: "https://r.test", apiKey: nil, makeCurrent: false, model: nil
-        ))
+        XCTAssertNoThrow(
+            try CodexTomlEditor.upsertProvider(
+                "[model_providers]\nother = { name = \"O\" }\n", id: "relay", name: "R",
+                baseURL: "https://r.test", apiKey: nil, makeCurrent: false, model: nil
+            ))
     }
 
     func testMalformedFilesAreRejectedWithTheirLine() {
@@ -196,18 +214,19 @@ final class TomlDocumentTests: XCTestCase {
     }
 
     func testValueSyntaxIsUnderstood() throws {
-        let document = try TomlDocument("""
-        a = "tab\\there \\u00e9 \\"quoted\\" # not a comment" # comment
-        b = 'C:\\raw\\path'
-        c = 1979-05-27 07:32:00Z
-        d = { x = 1, y = [1, { z = "}" }] }
-        e = \"\"\"
-        one \\
-          two\"\"\"
-        f = '''
-        line\"\"\"'''
-        g = +inf
-        """)
+        let document = try TomlDocument(
+            """
+            a = "tab\\there \\u00e9 \\"quoted\\" # not a comment" # comment
+            b = 'C:\\raw\\path'
+            c = 1979-05-27 07:32:00Z
+            d = { x = 1, y = [1, { z = "}" }] }
+            e = \"\"\"
+            one \\
+              two\"\"\"
+            f = '''
+            line\"\"\"'''
+            g = +inf
+            """)
         XCTAssertEqual(document.string("a"), "tab\there é \"quoted\" # not a comment")
         XCTAssertEqual(document.string("b"), "C:\\raw\\path")
         XCTAssertNil(document.string("c"))
@@ -216,7 +235,9 @@ final class TomlDocumentTests: XCTestCase {
     }
 
     func testQuotedValuesRoundTripAnything() throws {
-        for value in ["plain", "with \"quotes\"", "back\\slash", "new\nline", "tab\t", "bell\u{7}", "中文 🚀", "#hash"] {
+        for value in [
+            "plain", "with \"quotes\"", "back\\slash", "new\nline", "tab\t", "bell\u{7}", "中文 🚀", "#hash",
+        ] {
             var document = try TomlDocument("")
             try document.setString("key", value)
             XCTAssertEqual(try TomlDocument(document.text).string("key"), value)

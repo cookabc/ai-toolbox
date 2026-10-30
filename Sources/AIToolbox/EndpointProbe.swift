@@ -232,7 +232,7 @@ enum EndpointProbe {
     /// `{"error": {"message": …}}`, `{"error": "…"}`, `{"message": "…"}`.
     private static func serverMessage(in body: Data) -> String? {
         guard !body.isEmpty,
-              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+            let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
         else { return nil }
 
         var message: String?
@@ -244,7 +244,8 @@ enum EndpointProbe {
             message = direct
         }
         guard let message else { return nil }
-        let collapsed = message
+        let collapsed =
+            message
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !collapsed.isEmpty else { return nil }
@@ -265,7 +266,7 @@ enum EndpointProbe {
         case .appTransportSecurityRequiresSecureConnection:
             return L10n.Probe.atsBlocked
         case .secureConnectionFailed, .serverCertificateUntrusted,
-             .serverCertificateHasBadDate, .serverCertificateNotYetValid:
+            .serverCertificateHasBadDate, .serverCertificateNotYetValid:
             return L10n.Probe.tlsFailed
         default:
             return urlError.localizedDescription

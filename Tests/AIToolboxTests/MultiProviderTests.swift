@@ -1,14 +1,16 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 @MainActor
 final class MultiProviderTests: XCTestCase {
     func testSwitchingAndFailureIsolation() async throws {
-        let model = UsageViewModel(providers: [
-            FakeProvider(id: .codex, fails: true),
-            FakeProvider(id: .claude, fails: false),
-        ], preferences: nil)
+        let model = UsageViewModel(
+            providers: [
+                FakeProvider(id: .codex, fails: true),
+                FakeProvider(id: .claude, fails: false),
+            ], preferences: nil)
         model.refreshAll()
         for _ in 0..<200 {
             if model.sourceIDs.allSatisfy({ model.states[$0]?.isRefreshing == false }) { break }

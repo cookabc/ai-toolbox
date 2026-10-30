@@ -39,7 +39,8 @@ enum ConfigFile {
             guard let next = try transform(before), next != before else { return false }
             guard try read(target) == before else { continue }
             if backup, let before {
-                try replace(URL(fileURLWithPath: url.path + backupSuffix).resolvingSymlinksInPath(), with: before)
+                try replace(
+                    URL(fileURLWithPath: url.path + backupSuffix).resolvingSymlinksInPath(), with: before)
             }
             try replace(target, with: next)
             return true

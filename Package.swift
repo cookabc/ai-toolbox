@@ -5,7 +5,7 @@ let package = Package(
     name: "AIToolbox",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "AIToolbox", targets: ["AIToolbox"]),
+        .executable(name: "AIToolbox", targets: ["AIToolbox"])
     ],
     targets: [
         .executableTarget(

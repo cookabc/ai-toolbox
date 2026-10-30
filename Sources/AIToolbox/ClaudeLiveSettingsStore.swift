@@ -17,11 +17,12 @@ enum ClaudeLiveSettingsStore {
     /// writes what the provider declares and nothing else, so it can never quietly
     /// rewrite the rest of the user's `env`. Anything outside this list is left
     /// exactly as the user wrote it.
-    static let perProviderKeys = familyModels + [
-        "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
-        "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
-        "CLAUDE_CODE_EFFORT_LEVEL",
-    ]
+    static let perProviderKeys =
+        familyModels + [
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+            "CLAUDE_CODE_EFFORT_LEVEL",
+        ]
 
     /// Claude Code's Anthropic client appends `/v1/messages` to `ANTHROPIC_BASE_URL`
     /// on its own. Providers are shared with Codex, which needs the OpenAI-style

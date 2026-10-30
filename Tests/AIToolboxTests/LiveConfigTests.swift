@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 final class LiveConfigTests: XCTestCase {
@@ -37,51 +38,59 @@ final class LiveConfigTests: XCTestCase {
     func testClaudeBaseURLNormalizationStripsOpenAIStyleVersionSegment() {
         // Claude Code appends "/v1/messages" itself, so a base URL shared with
         // Codex must lose its own OpenAI-style version segment first.
-        XCTAssertEqual(ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1"), "https://relay.test")
-        XCTAssertEqual(ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1/"), "https://relay.test")
-        XCTAssertEqual(ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/api/v1"), "https://relay.test/api")
-        XCTAssertEqual(ClaudeLiveSettingsStore.normalizedBaseURL("  https://relay.test/v1  "), "https://relay.test")
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1"), "https://relay.test")
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1/"), "https://relay.test")
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/api/v1"), "https://relay.test/api")
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("  https://relay.test/v1  "), "https://relay.test")
         XCTAssertEqual(ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/"), "https://relay.test")
         XCTAssertEqual(ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test"), "https://relay.test")
         // A path that merely starts with "v1" is not a version segment.
-        XCTAssertEqual(ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1beta"), "https://relay.test/v1beta")
+        XCTAssertEqual(
+            ClaudeLiveSettingsStore.normalizedBaseURL("https://relay.test/v1beta"),
+            "https://relay.test/v1beta")
     }
 
     // MARK: - Codex config edits
 
     func testCodexUpsertAndSwitchPreserveUnrelatedTables() throws {
         let original = """
-        model = "gpt-5"
-        personality = "pragmatic"
+            model = "gpt-5"
+            personality = "pragmatic"
 
-        [plugins.chrome]
-        enabled = true
+            [plugins.chrome]
+            enabled = true
 
-        [tui]
-        theme = "solarized-light"
-        """
+            [tui]
+            theme = "solarized-light"
+            """
         let added = try CodexTomlEditor.upsertProvider(
             original, id: "relay", name: "Relay", baseURL: "https://relay.test/v1",
             apiKey: "sk-relay-aaaa", makeCurrent: true, model: "k3"
         )
-        XCTAssertEqual(added, """
-        model = "k3"
-        model_provider = "relay"
-        personality = "pragmatic"
+        XCTAssertEqual(
+            added,
+            """
+            model = "k3"
+            model_provider = "relay"
+            personality = "pragmatic"
 
-        [plugins.chrome]
-        enabled = true
+            [plugins.chrome]
+            enabled = true
 
-        [tui]
-        theme = "solarized-light"
+            [tui]
+            theme = "solarized-light"
 
-        [model_providers.relay]
-        name = "Relay"
-        base_url = "https://relay.test/v1"
-        wire_api = "responses"
-        experimental_bearer_token = "sk-relay-aaaa"
+            [model_providers.relay]
+            name = "Relay"
+            base_url = "https://relay.test/v1"
+            wire_api = "responses"
+            experimental_bearer_token = "sk-relay-aaaa"
 
-        """)
+            """)
         let settings = try CodexTomlEditor.load(added)
         XCTAssertEqual(settings.currentProviderID, "relay")
         XCTAssertEqual(settings.model, "k3")
@@ -95,29 +104,39 @@ final class LiveConfigTests: XCTestCase {
     }
 
     func testCodexRejectsReservedAndInvalidIDs() {
-        XCTAssertThrowsError(try CodexTomlEditor.upsertProvider(
-            "", id: "openai", name: "x", baseURL: "https://example.test", apiKey: "k", makeCurrent: true, model: nil
-        )) { XCTAssertEqual($0 as? LiveConfigError, .reservedProviderID) }
-        XCTAssertThrowsError(try CodexTomlEditor.upsertProvider(
-            "", id: "1bad", name: "x", baseURL: "https://example.test", apiKey: "k", makeCurrent: true, model: nil
-        )) { XCTAssertEqual($0 as? LiveConfigError, .invalidProviderID) }
-        XCTAssertThrowsError(try CodexTomlEditor.upsertProvider(
-            "", id: "智谱", name: "x", baseURL: "https://example.test", apiKey: "k", makeCurrent: true, model: nil
-        )) { XCTAssertEqual($0 as? LiveConfigError, .invalidProviderID) }
+        XCTAssertThrowsError(
+            try CodexTomlEditor.upsertProvider(
+                "", id: "openai", name: "x", baseURL: "https://example.test", apiKey: "k", makeCurrent: true,
+                model: nil
+            )
+        ) { XCTAssertEqual($0 as? LiveConfigError, .reservedProviderID) }
+        XCTAssertThrowsError(
+            try CodexTomlEditor.upsertProvider(
+                "", id: "1bad", name: "x", baseURL: "https://example.test", apiKey: "k", makeCurrent: true,
+                model: nil
+            )
+        ) { XCTAssertEqual($0 as? LiveConfigError, .invalidProviderID) }
+        XCTAssertThrowsError(
+            try CodexTomlEditor.upsertProvider(
+                "", id: "智谱", name: "x", baseURL: "https://example.test", apiKey: "k", makeCurrent: true,
+                model: nil
+            )
+        ) { XCTAssertEqual($0 as? LiveConfigError, .invalidProviderID) }
     }
 
     func testCodexEditKeepsExistingTokenAndHandWrittenWireAPI() throws {
         let first = """
-        [model_providers.relay]
-        # rotated monthly
-        name = "Relay"
-        base_url = "https://a.test"
-        wire_api = "chat"
-        experimental_bearer_token = "sk-old-token"
-        query_params = { "api-version" = "2025-01-01" }
-        """
+            [model_providers.relay]
+            # rotated monthly
+            name = "Relay"
+            base_url = "https://a.test"
+            wire_api = "chat"
+            experimental_bearer_token = "sk-old-token"
+            query_params = { "api-version" = "2025-01-01" }
+            """
         let edited = try CodexTomlEditor.upsertProvider(
-            first, id: "relay", name: "Relay 2", baseURL: "https://b.test", apiKey: nil, makeCurrent: false, model: nil
+            first, id: "relay", name: "Relay 2", baseURL: "https://b.test", apiKey: nil, makeCurrent: false,
+            model: nil
         )
         XCTAssertEqual(CodexTomlEditor.secret(in: edited, id: "relay"), "sk-old-token")
         let fields = CodexTomlEditor.providerFields(in: edited, id: "relay")
@@ -126,13 +145,15 @@ final class LiveConfigTests: XCTestCase {
         XCTAssertEqual(fields["wire_api"], "chat", "a wire_api set by hand is not ours to change")
         XCTAssertTrue(edited.contains("# rotated monthly"), "comments inside the table survive")
         XCTAssertTrue(edited.contains(#"query_params = { "api-version" = "2025-01-01" }"#))
-        XCTAssertNil(CodexTomlEditor.rootString(edited, key: "model"), "saving without switching changes no root key")
+        XCTAssertNil(
+            CodexTomlEditor.rootString(edited, key: "model"), "saving without switching changes no root key")
     }
 
     func testCodexFallbackToBuiltInOpenAIDropsRelayModelAndOurCatalog() throws {
         let relay = try CodexTomlEditor.upsertProvider(
             "model = \"gpt-5\"\npersonality = \"pragmatic\"\n", id: "relay", name: "Relay",
-            baseURL: "https://relay.test/v1", apiKey: "sk-relay", makeCurrent: true, model: "deepseek-v4.1-flash",
+            baseURL: "https://relay.test/v1", apiKey: "sk-relay", makeCurrent: true,
+            model: "deepseek-v4.1-flash",
             modelCatalog: "/Users/someone/.codex/ai-toolbox-models.json"
         )
         XCTAssertEqual(try CodexTomlEditor.load(relay).model, "deepseek-v4.1-flash")
@@ -165,13 +186,14 @@ final class LiveConfigTests: XCTestCase {
     /// removed, nothing here knows how to put it back.
     func testCodexLeavesAHandWrittenCatalogAlone() throws {
         let text = """
-        model = "gpt-5"
-        model_provider = "relay"
-        model_catalog_json = "/Users/someone/their-own-catalog.json"
-        """
+            model = "gpt-5"
+            model_provider = "relay"
+            model_catalog_json = "/Users/someone/their-own-catalog.json"
+            """
         XCTAssertFalse(CodexTomlEditor.pointsAtPublishedCatalog(text))
         XCTAssertEqual(
-            CodexTomlEditor.rootString(try CodexTomlEditor.switchToBuiltInOpenAI(text), key: CodexTomlEditor.modelCatalogKey),
+            CodexTomlEditor.rootString(
+                try CodexTomlEditor.switchToBuiltInOpenAI(text), key: CodexTomlEditor.modelCatalogKey),
             "/Users/someone/their-own-catalog.json"
         )
     }
@@ -179,7 +201,10 @@ final class LiveConfigTests: XCTestCase {
     // MARK: - Slugs
 
     func testSlugsAreAlwaysValidCodexIDs() {
-        for name in ["智谱清言", "Kimi K2", "  ", "123 Relay", "Ünïcødé", "a/b\\c", String(repeating: "长", count: 50), "openai"] {
+        for name in [
+            "智谱清言", "Kimi K2", "  ", "123 Relay", "Ünïcødé", "a/b\\c", String(repeating: "长", count: 50),
+            "openai",
+        ] {
             let slug = ProviderSlug.suggest(from: name, existing: [])
             XCTAssertTrue(ProviderIDRules.isValid(slug), "\(name) → \(slug)")
             XCTAssertFalse(ProviderIDRules.reservedCodexIDs.contains(slug), "\(name) → \(slug)")
@@ -195,7 +220,8 @@ final class LiveConfigTests: XCTestCase {
     func testActivatingAClaudeProviderWritesSettings() async throws {
         let fixture = try Fixture()
         let provider = StoredProvider(
-            app: .claude, name: "Test", slug: "test", baseURL: "https://example.test/v1", model: "haiku", apiKey: "sk-view-model-key"
+            app: .claude, name: "Test", slug: "test", baseURL: "https://example.test/v1", model: "haiku",
+            apiKey: "sk-view-model-key"
         )
         try fixture.library.save([provider])
 
@@ -216,8 +242,12 @@ final class LiveConfigTests: XCTestCase {
     @MainActor
     func testActiveClaudeProviderIsMatchedByKeyToo() async throws {
         let fixture = try Fixture()
-        let first = StoredProvider(app: .claude, name: "A", slug: "a", baseURL: "https://relay.test", model: "m", apiKey: "sk-first-key")
-        let second = StoredProvider(app: .claude, name: "B", slug: "b", baseURL: "https://relay.test", model: "m", apiKey: "sk-second-key")
+        let first = StoredProvider(
+            app: .claude, name: "A", slug: "a", baseURL: "https://relay.test", model: "m",
+            apiKey: "sk-first-key")
+        let second = StoredProvider(
+            app: .claude, name: "B", slug: "b", baseURL: "https://relay.test", model: "m",
+            apiKey: "sk-second-key")
         try fixture.library.save([first, second])
         let model = fixture.model()
         model.activate(second)
@@ -227,7 +257,9 @@ final class LiveConfigTests: XCTestCase {
 
     @MainActor
     func testStatusIsScopedToItsToolAndSaveWithoutSwitchKeepsCurrentProvider() async throws {
-        let fixture = try Fixture(codexConfig: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n", claudeSettings: #"{ "env": {} }"#)
+        let fixture = try Fixture(
+            codexConfig: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n", claudeSettings: #"{ "env": {} }"#
+        )
         let model = fixture.model()
         model.app = .codex
         model.beginCreate()
@@ -256,8 +288,11 @@ final class LiveConfigTests: XCTestCase {
     func testClaudeAndCodexProvidersAreFilteredSeparately() throws {
         let fixture = try Fixture()
         try fixture.library.save([
-            StoredProvider(app: .claude, name: "Claude A", slug: "a", baseURL: "https://a.test", model: "m1", apiKey: "k1"),
-            StoredProvider(app: .codex, name: "Codex B", slug: "b", baseURL: "https://b.test", model: "m2", apiKey: "k2"),
+            StoredProvider(
+                app: .claude, name: "Claude A", slug: "a", baseURL: "https://a.test", model: "m1",
+                apiKey: "k1"),
+            StoredProvider(
+                app: .codex, name: "Codex B", slug: "b", baseURL: "https://b.test", model: "m2", apiKey: "k2"),
         ])
         let model = fixture.model()
         model.app = .claude
@@ -272,11 +307,14 @@ final class LiveConfigTests: XCTestCase {
     @MainActor
     func testActivationKeepsChangesMadeToConfigSinceItWasRead() async throws {
         let fixture = try Fixture(codexConfig: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n")
-        let relay = StoredProvider(app: .codex, name: "Relay", slug: "relay", baseURL: "https://relay.test/v1", model: "m", apiKey: "sk-r")
+        let relay = StoredProvider(
+            app: .codex, name: "Relay", slug: "relay", baseURL: "https://relay.test/v1", model: "m",
+            apiKey: "sk-r")
         try fixture.library.save([relay])
         let model = fixture.model()
 
-        try fixture.writeCodex(fixture.codexText() + "\n[projects.\"/Users/someone/new-project\"]\ntrust_level = \"trusted\"\n")
+        try fixture.writeCodex(
+            fixture.codexText() + "\n[projects.\"/Users/someone/new-project\"]\ntrust_level = \"trusted\"\n")
         model.activate(relay)
         await model.waitUntilIdle()
 
@@ -291,8 +329,10 @@ final class LiveConfigTests: XCTestCase {
     @MainActor
     func testDeletingAnotherProviderRightAfterASwitchKeepsTheSwitch() async throws {
         let fixture = try Fixture(codexConfig: "model_provider = \"openai\"\n")
-        let a = StoredProvider(app: .codex, name: "A", slug: "a", baseURL: "https://a.test/v1", model: "ma", apiKey: "sk-a")
-        let b = StoredProvider(app: .codex, name: "B", slug: "b", baseURL: "https://b.test/v1", model: "mb", apiKey: "sk-b")
+        let a = StoredProvider(
+            app: .codex, name: "A", slug: "a", baseURL: "https://a.test/v1", model: "ma", apiKey: "sk-a")
+        let b = StoredProvider(
+            app: .codex, name: "B", slug: "b", baseURL: "https://b.test/v1", model: "mb", apiKey: "sk-b")
         try fixture.library.save([a, b])
         let model = fixture.model()
         model.activate(b)
@@ -312,8 +352,12 @@ final class LiveConfigTests: XCTestCase {
     @MainActor
     func testEditingTheActiveProviderUpdatesTheLiveConfig() async throws {
         let fixture = try Fixture(codexConfig: "model_provider = \"openai\"\n", claudeSettings: "{}")
-        let codex = StoredProvider(app: .codex, name: "Relay", slug: "relay", baseURL: "https://old.test/v1", model: "m", apiKey: "sk-old")
-        let claude = StoredProvider(app: .claude, name: "Gateway", slug: "gateway", baseURL: "https://gw.test", model: "old", apiKey: "sk-gw")
+        let codex = StoredProvider(
+            app: .codex, name: "Relay", slug: "relay", baseURL: "https://old.test/v1", model: "m",
+            apiKey: "sk-old")
+        let claude = StoredProvider(
+            app: .claude, name: "Gateway", slug: "gateway", baseURL: "https://gw.test", model: "old",
+            apiKey: "sk-gw")
         try fixture.library.save([codex, claude])
         let model = fixture.model()
         model.activate(codex)
@@ -336,16 +380,23 @@ final class LiveConfigTests: XCTestCase {
         model.draftModel = "new"
         model.saveDraft(activate: false)
         await model.waitUntilIdle()
-        XCTAssertEqual(try ClaudeLiveSettingsStore.load(from: fixture.paths.claudeSettings).settings.model, "new")
+        XCTAssertEqual(
+            try ClaudeLiveSettingsStore.load(from: fixture.paths.claudeSettings).settings.model, "new")
         XCTAssertEqual(model.activeProviderID(for: .claude), claude.id, "still the active provider")
         XCTAssertFalse(model.liveConfigIsUnmanaged)
     }
 
     @MainActor
     func testEditingAnInactiveProviderSyncsItsExistingTableOnly() async throws {
-        let fixture = try Fixture(codexConfig: "model_provider = \"openai\"\n\n[model_providers.relay]\nname = \"Relay\"\nbase_url = \"https://old.test/v1\"\n")
-        let relay = StoredProvider(app: .codex, name: "Relay", slug: "relay", baseURL: "https://old.test/v1", model: "m", apiKey: "")
-        let other = StoredProvider(app: .codex, name: "Other", slug: "other", baseURL: "https://other.test/v1", model: "m", apiKey: "")
+        let fixture = try Fixture(
+            codexConfig:
+                "model_provider = \"openai\"\n\n[model_providers.relay]\nname = \"Relay\"\nbase_url = \"https://old.test/v1\"\n"
+        )
+        let relay = StoredProvider(
+            app: .codex, name: "Relay", slug: "relay", baseURL: "https://old.test/v1", model: "m", apiKey: "")
+        let other = StoredProvider(
+            app: .codex, name: "Other", slug: "other", baseURL: "https://other.test/v1", model: "m",
+            apiKey: "")
         try fixture.library.save([relay, other])
         let model = fixture.model()
         model.app = .codex
@@ -359,8 +410,10 @@ final class LiveConfigTests: XCTestCase {
         await model.waitUntilIdle()
 
         let text = try fixture.codexText()
-        XCTAssertEqual(CodexTomlEditor.providerFields(in: text, id: "relay")["base_url"], "https://new.test/v1")
-        XCTAssertFalse(text.contains("[model_providers.other]"), "a provider Codex does not know is not added by saving")
+        XCTAssertEqual(
+            CodexTomlEditor.providerFields(in: text, id: "relay")["base_url"], "https://new.test/v1")
+        XCTAssertFalse(
+            text.contains("[model_providers.other]"), "a provider Codex does not know is not added by saving")
         XCTAssertEqual(CodexTomlEditor.rootString(text, key: "model_provider"), "openai")
     }
 
@@ -368,9 +421,11 @@ final class LiveConfigTests: XCTestCase {
     /// Going back to the official login removes both the key and the file.
     @MainActor
     func testActivatingPublishesTheCodexCatalogAndOfficialRemovesIt() async throws {
-        let fixture = try Fixture(codexConfig: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n", officialCatalog: true)
+        let fixture = try Fixture(
+            codexConfig: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n", officialCatalog: true)
         let provider = StoredProvider(
-            app: .codex, name: "ARouter", slug: "arouter", baseURL: "https://router.test/v1", model: "deepseek-v4.1-flash", apiKey: "sk-router"
+            app: .codex, name: "ARouter", slug: "arouter", baseURL: "https://router.test/v1",
+            model: "deepseek-v4.1-flash", apiKey: "sk-router"
         )
         try fixture.library.save([provider])
         let model = fixture.model()
@@ -380,8 +435,12 @@ final class LiveConfigTests: XCTestCase {
 
         XCTAssertNil(model.errorMessage)
         let config = try fixture.codexText()
-        XCTAssertEqual(CodexTomlEditor.rootString(config, key: CodexTomlEditor.modelCatalogKey), fixture.paths.codexModelCatalog.path)
-        let published = try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.paths.codexModelCatalog)) as? [String: Any]
+        XCTAssertEqual(
+            CodexTomlEditor.rootString(config, key: CodexTomlEditor.modelCatalogKey),
+            fixture.paths.codexModelCatalog.path)
+        let published =
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.paths.codexModelCatalog))
+            as? [String: Any]
         let models = published?["models"] as? [[String: Any]]
         XCTAssertEqual(models?.first?["slug"] as? String, "deepseek-v4.1-flash")
         XCTAssertEqual(models?.first?["visibility"] as? String, "list")
@@ -400,8 +459,12 @@ final class LiveConfigTests: XCTestCase {
     @MainActor
     func testTheOfficialModelComesBackAfterARelay() async throws {
         let fixture = try Fixture(codexConfig: "model_provider = \"openai\"\nmodel = \"gpt-6-sol\"\n")
-        let relay = StoredProvider(app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "relay-model", apiKey: "sk")
-        let other = StoredProvider(app: .codex, name: "O", slug: "o", baseURL: "https://o.test/v1", model: "other-model", apiKey: "sk")
+        let relay = StoredProvider(
+            app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "relay-model",
+            apiKey: "sk")
+        let other = StoredProvider(
+            app: .codex, name: "O", slug: "o", baseURL: "https://o.test/v1", model: "other-model",
+            apiKey: "sk")
         try fixture.library.save([relay, other])
         let model = fixture.model()
         model.activate(relay)
@@ -411,8 +474,9 @@ final class LiveConfigTests: XCTestCase {
 
         model.useCodexOfficial()
         await model.waitUntilIdle()
-        XCTAssertEqual(CodexTomlEditor.rootString(try fixture.codexText(), key: "model"), "gpt-6-sol",
-                       "relay to relay must not replace the remembered official model")
+        XCTAssertEqual(
+            CodexTomlEditor.rootString(try fixture.codexText(), key: "model"), "gpt-6-sol",
+            "relay to relay must not replace the remembered official model")
 
         model.activate(relay)
         model.delete(relay)
@@ -428,7 +492,8 @@ final class LiveConfigTests: XCTestCase {
     func testAnUnpublishableModelIsReportedInsteadOfBreakingTheConfig() async throws {
         let fixture = try Fixture(codexConfig: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n")
         let provider = StoredProvider(
-            app: .codex, name: "ARouter", slug: "arouter", baseURL: "https://router.test/v1", model: "deepseek-v4.1-flash", apiKey: "sk-router"
+            app: .codex, name: "ARouter", slug: "arouter", baseURL: "https://router.test/v1",
+            model: "deepseek-v4.1-flash", apiKey: "sk-router"
         )
         try fixture.library.save([provider])
         let model = fixture.model()
@@ -453,14 +518,17 @@ final class LiveConfigTests: XCTestCase {
             codexConfig: "model_provider = \"openai\"\nmodel_catalog_json = \"/Users/someone/mine.json\"\n",
             officialCatalog: true
         )
-        let provider = StoredProvider(app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
+        let provider = StoredProvider(
+            app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
         try fixture.library.save([provider])
         let model = fixture.model()
         model.app = .codex
         model.activate(provider)
         await model.waitUntilIdle()
 
-        XCTAssertEqual(CodexTomlEditor.rootString(try fixture.codexText(), key: CodexTomlEditor.modelCatalogKey), "/Users/someone/mine.json")
+        XCTAssertEqual(
+            CodexTomlEditor.rootString(try fixture.codexText(), key: CodexTomlEditor.modelCatalogKey),
+            "/Users/someone/mine.json")
         XCTAssertTrue(model.statusMessage?.contains("model_catalog_json") == true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.paths.codexModelCatalog.path))
     }
@@ -468,7 +536,8 @@ final class LiveConfigTests: XCTestCase {
     @MainActor
     func testAMissingConfigTomlIsCreatedOnSwitch() async throws {
         let fixture = try Fixture()
-        let provider = StoredProvider(app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
+        let provider = StoredProvider(
+            app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
         try fixture.library.save([provider])
         let model = fixture.model()
         XCTAssertEqual(model.codexState, .absent)
@@ -483,7 +552,8 @@ final class LiveConfigTests: XCTestCase {
     @MainActor
     func testAMissingCodexHomeIsReported() async throws {
         let fixture = try Fixture(codexHome: false)
-        let provider = StoredProvider(app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
+        let provider = StoredProvider(
+            app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
         let model = fixture.model()
         XCTAssertEqual(model.codexState, .noCodexHome)
         model.app = .codex
@@ -497,7 +567,8 @@ final class LiveConfigTests: XCTestCase {
     func testAnUnparseableConfigIsReportedAndNeverWritten() async throws {
         let broken = "model = \"gpt-5\"\nthis is not toml\n"
         let fixture = try Fixture(codexConfig: broken)
-        let provider = StoredProvider(app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
+        let provider = StoredProvider(
+            app: .codex, name: "R", slug: "r", baseURL: "https://r.test/v1", model: "m", apiKey: "sk")
         let model = fixture.model()
         model.app = .codex
         guard case .unreadable(let message) = model.codexState else { return XCTFail("expected unreadable") }
@@ -510,7 +581,9 @@ final class LiveConfigTests: XCTestCase {
 
     @MainActor
     func testANonLatinNameGetsAWorkingCodexID() async throws {
-        let fixture = try Fixture(codexConfig: "[model_providers.zhi-pu-qing-yan]\nname = \"hand written\"\nbase_url = \"https://x.test\"\n")
+        let fixture = try Fixture(
+            codexConfig:
+                "[model_providers.zhi-pu-qing-yan]\nname = \"hand written\"\nbase_url = \"https://x.test\"\n")
         let model = fixture.model()
         model.app = .codex
         model.beginCreate()
@@ -523,17 +596,20 @@ final class LiveConfigTests: XCTestCase {
 
         XCTAssertNil(model.errorMessage)
         let saved = try XCTUnwrap(model.providers.first)
-        XCTAssertEqual(saved.slug, "zhi-pu-qing-yan-2", "a table written by hand is never adopted by accident")
+        XCTAssertEqual(
+            saved.slug, "zhi-pu-qing-yan-2", "a table written by hand is never adopted by accident")
         let text = try fixture.codexText()
         XCTAssertEqual(CodexTomlEditor.rootString(text, key: "model_provider"), "zhi-pu-qing-yan-2")
-        XCTAssertEqual(CodexTomlEditor.providerFields(in: text, id: "zhi-pu-qing-yan")["name"], "hand written")
+        XCTAssertEqual(
+            CodexTomlEditor.providerFields(in: text, id: "zhi-pu-qing-yan")["name"], "hand written")
     }
 
     @MainActor
     func testImportCapturesTheCredentialStyle() async throws {
-        let fixture = try Fixture(claudeSettings: """
-        { "env": { "ANTHROPIC_BASE_URL": "https://relay.test", "ANTHROPIC_AUTH_TOKEN": "sk-bearer", "ANTHROPIC_MODEL": "m" } }
-        """)
+        let fixture = try Fixture(
+            claudeSettings: """
+                { "env": { "ANTHROPIC_BASE_URL": "https://relay.test", "ANTHROPIC_AUTH_TOKEN": "sk-bearer", "ANTHROPIC_MODEL": "m" } }
+                """)
         let model = fixture.model()
         model.app = .claude
         XCTAssertTrue(model.liveConfigIsUnmanaged)
@@ -601,7 +677,8 @@ final class LiveConfigTests: XCTestCase {
     func testDeletingAProviderWaitsForConfirmation() async throws {
         let fixture = try Fixture()
         let provider = StoredProvider(
-            app: .claude, name: "Company gateway", slug: "company", baseURL: "https://relay.test", model: "m", apiKey: "k")
+            app: .claude, name: "Company gateway", slug: "company", baseURL: "https://relay.test", model: "m",
+            apiKey: "k")
         try fixture.library.save([provider])
         let model = fixture.model()
         model.app = .claude
@@ -630,7 +707,10 @@ final class LiveConfigTests: XCTestCase {
     /// only after the user confirms.
     @MainActor
     func testClaudeOfficialLoginIsTheAbsenceOfAnOverlay() async throws {
-        let fixture = try Fixture(claudeSettings: #"{ "env": { "ANTHROPIC_BASE_URL": "https://relay.test", "ANTHROPIC_API_KEY": "sk-live", "KEEP": "1" } }"#)
+        let fixture = try Fixture(
+            claudeSettings:
+                #"{ "env": { "ANTHROPIC_BASE_URL": "https://relay.test", "ANTHROPIC_API_KEY": "sk-live", "KEEP": "1" } }"#
+        )
         let model = fixture.model()
         model.app = .claude
         XCTAssertFalse(model.claudeUsesOfficialLogin)
@@ -678,27 +758,32 @@ private struct Fixture {
     let paths: LiveConfigPaths
     let library: ProviderLibraryStore
 
-    init(codexConfig: String? = nil, claudeSettings: String? = nil, officialCatalog: Bool = false,
-         codexHome: Bool = true) throws {
+    init(
+        codexConfig: String? = nil, claudeSettings: String? = nil, officialCatalog: Bool = false,
+        codexHome: Bool = true
+    ) throws {
         root = FileManager.default.temporaryDirectory.appending(path: "live-config-\(UUID().uuidString)")
         let codex = root.appending(path: ".codex")
         let claude = root.appending(path: ".claude")
         try FileManager.default.createDirectory(at: claude, withIntermediateDirectories: true)
         if codexHome { try FileManager.default.createDirectory(at: codex, withIntermediateDirectories: true) }
-        paths = LiveConfigPaths(claudeSettings: claude.appending(path: "settings.json"),
-                                codexConfig: codex.appending(path: "config.toml"))
+        paths = LiveConfigPaths(
+            claudeSettings: claude.appending(path: "settings.json"),
+            codexConfig: codex.appending(path: "config.toml"))
         library = ProviderLibraryStore(url: root.appending(path: "providers.json"))
         if let codexConfig { try Data(codexConfig.utf8).write(to: paths.codexConfig) }
         if let claudeSettings { try Data(claudeSettings.utf8).write(to: paths.claudeSettings) }
         if officialCatalog {
-            try Data("""
-            { "models": [ {
-                "slug": "gpt-6-astra", "display_name": "GPT-6-Astra", "visibility": "list", "priority": 1,
-                "context_window": 272000, "max_context_window": 872000, "shell_type": "unified_exec",
-                "truncation_policy": { "mode": "tokens", "limit": 10000 },
-                "model_messages": { "instructions_template": "You are Codex." }
-            } ] }
-            """.utf8).write(to: paths.codexOfficialCatalog)
+            try Data(
+                """
+                { "models": [ {
+                    "slug": "gpt-6-astra", "display_name": "GPT-6-Astra", "visibility": "list", "priority": 1,
+                    "context_window": 272000, "max_context_window": 872000, "shell_type": "unified_exec",
+                    "truncation_policy": { "mode": "tokens", "limit": 10000 },
+                    "model_messages": { "instructions_template": "You are Codex." }
+                } ] }
+                """.utf8
+            ).write(to: paths.codexOfficialCatalog)
         }
     }
 

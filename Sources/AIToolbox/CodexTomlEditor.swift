@@ -83,7 +83,9 @@ enum CodexTomlEditor {
 
         var document = try parse(text)
         let table = [providersTable, id]
-        guard !document.isDefinedOutsideItsTable(table) else { throw LiveConfigError.unsupportedCodexLayout(id) }
+        guard !document.isDefinedOutsideItsTable(table) else {
+            throw LiveConfigError.unsupportedCodexLayout(id)
+        }
         if document.hasTable(table) {
             try document.setString("name", displayName, in: table)
             try document.setString("base_url", trimmedURL, in: table, after: "name")
@@ -114,7 +116,9 @@ enum CodexTomlEditor {
         var document = try parse(text)
         let table = [providersTable, id]
         guard document.hasTable(table) else { return text }
-        guard !document.isDefinedOutsideItsTable(table) else { throw LiveConfigError.unsupportedCodexLayout(id) }
+        guard !document.isDefinedOutsideItsTable(table) else {
+            throw LiveConfigError.unsupportedCodexLayout(id)
+        }
         try document.removeTable(table)
         if (document.string("model_provider") ?? builtInOpenAI.id) == id {
             try selectBuiltInOpenAI(officialModel: officialModel, in: &document)
@@ -138,7 +142,8 @@ enum CodexTomlEditor {
     /// remembering before a switch away overwrites it with a relay's model.
     static func officialModel(in text: String) -> String? {
         guard let document = try? parse(text),
-              (document.string("model_provider") ?? builtInOpenAI.id) == builtInOpenAI.id else { return nil }
+            (document.string("model_provider") ?? builtInOpenAI.id) == builtInOpenAI.id
+        else { return nil }
         return document.string("model")
     }
 
@@ -159,7 +164,9 @@ enum CodexTomlEditor {
         }
     }
 
-    private static func select(_ id: String, model: String?, catalog: String?, in document: inout TomlDocument) throws {
+    private static func select(
+        _ id: String, model: String?, catalog: String?, in document: inout TomlDocument
+    ) throws {
         let model = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !model.isEmpty { try document.setString("model", model) }
         try document.setString("model_provider", id, after: "model")
@@ -182,7 +189,8 @@ enum CodexTomlEditor {
         if let path {
             try document.setString(modelCatalogKey, path, after: "model_provider")
         } else if let current = document.string(modelCatalogKey),
-                  URL(fileURLWithPath: current).lastPathComponent == CodexModelCatalog.fileName {
+            URL(fileURLWithPath: current).lastPathComponent == CodexModelCatalog.fileName
+        {
             try document.remove(modelCatalogKey)
         }
     }

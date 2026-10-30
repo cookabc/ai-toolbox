@@ -21,8 +21,10 @@ enum ClaudeSettingsEditor {
 
     static func apply(_ edit: Edit, to data: Data?) throws -> Data {
         guard let data, data.contains(where: { !isWhitespace($0) }) else {
-            return Data(("{\n  \"env\": " + object(edit.set.map { ($0.key, json($0.value)) }, indent: "  ", unit: "  ")
-                + "\n}\n").utf8)
+            return Data(
+                ("{\n  \"env\": "
+                    + object(edit.set.map { ($0.key, json($0.value)) }, indent: "  ", unit: "  ")
+                    + "\n}\n").utf8)
         }
         guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
             throw LiveConfigError.writeFailed(L10n.Errors.settingsNotObject)
@@ -52,7 +54,8 @@ enum ClaudeSettingsEditor {
             let unit = outer.isEmpty ? "  " : outer
             var inner = outer + unit
             if let first = existing.first,
-               scanner.lineStart(of: first.range.lowerBound) != scanner.lineStart(of: env.range.lowerBound) {
+                scanner.lineStart(of: first.range.lowerBound) != scanner.lineStart(of: env.range.lowerBound)
+            {
                 inner = scanner.indentation(ofLineContaining: first.range.lowerBound)
             }
             let replacement = object(entries, indent: outer, unit: unit, inner: inner)
@@ -61,9 +64,12 @@ enum ClaudeSettingsEditor {
             let entries = edit.set.map { ($0.key, json($0.value)) }
             guard !entries.isEmpty else { return data }
             if let first = members.first,
-               scanner.lineStart(of: first.range.lowerBound) != scanner.lineStart(of: root.lowerBound) {
+                scanner.lineStart(of: first.range.lowerBound) != scanner.lineStart(of: root.lowerBound)
+            {
                 let indent = scanner.indentation(ofLineContaining: first.range.lowerBound)
-                let member = "\n" + indent + "\"env\": " + object(entries, indent: indent, unit: indent.isEmpty ? "  " : indent) + ","
+                let member =
+                    "\n" + indent + "\"env\": "
+                    + object(entries, indent: indent, unit: indent.isEmpty ? "  " : indent) + ","
                 bytes.insert(contentsOf: Array(member.utf8), at: root.lowerBound + 1)
             } else if members.isEmpty {
                 let replacement = "{\n  \"env\": " + object(entries, indent: "  ", unit: "  ") + "\n}"
@@ -97,7 +103,9 @@ enum ClaudeSettingsEditor {
         }
     }
 
-    private static func object(_ entries: [(String, String)], indent: String, unit: String, inner: String? = nil) -> String {
+    private static func object(
+        _ entries: [(String, String)], indent: String, unit: String, inner: String? = nil
+    ) -> String {
         guard !entries.isEmpty else { return "{}" }
         let inner = inner ?? indent + unit
         let lines = entries.map { inner + json($0.0) + ": " + $0.1 }
@@ -105,7 +113,9 @@ enum ClaudeSettingsEditor {
     }
 
     private static func json(_ string: String) -> String {
-        let data = (try? JSONSerialization.data(withJSONObject: string, options: [.fragmentsAllowed, .withoutEscapingSlashes]))
+        let data =
+            (try? JSONSerialization.data(
+                withJSONObject: string, options: [.fragmentsAllowed, .withoutEscapingSlashes]))
             ?? Data("\"\"".utf8)
         return String(decoding: data, as: UTF8.self)
     }
@@ -133,7 +143,10 @@ private struct JSONScanner {
     mutating func rootObject() throws -> Range<Int> {
         index = 0
         skipWhitespace()
-        if bytes.starts(with: [0xEF, 0xBB, 0xBF]) { index = 3; skipWhitespace() }
+        if bytes.starts(with: [0xEF, 0xBB, 0xBF]) {
+            index = 3
+            skipWhitespace()
+        }
         guard index < bytes.count, bytes[index] == UInt8(ascii: "{") else { throw Failure() }
         let start = index
         try skipValue()
@@ -147,11 +160,16 @@ private struct JSONScanner {
             skipWhitespace()
             guard index < object.upperBound else { throw Failure() }
             if bytes[index] == UInt8(ascii: "}") { return result }
-            if bytes[index] == UInt8(ascii: ",") { index += 1; continue }
+            if bytes[index] == UInt8(ascii: ",") {
+                index += 1
+                continue
+            }
             let keyStart = index
             try skipString()
-            guard let key = try? JSONSerialization.jsonObject(with: Data(bytes[keyStart..<index]),
-                                                              options: .fragmentsAllowed) as? String
+            guard
+                let key = try? JSONSerialization.jsonObject(
+                    with: Data(bytes[keyStart..<index]),
+                    options: .fragmentsAllowed) as? String
             else { throw Failure() }
             skipWhitespace()
             guard index < bytes.count, bytes[index] == UInt8(ascii: ":") else { throw Failure() }
@@ -186,7 +204,9 @@ private struct JSONScanner {
         while index < bytes.count {
             switch bytes[index] {
             case UInt8(ascii: "\\"): index += 2
-            case UInt8(ascii: "\""): index += 1; return
+            case UInt8(ascii: "\""):
+                index += 1
+                return
             default: index += 1
             }
         }
@@ -202,11 +222,16 @@ private struct JSONScanner {
             var depth = 0
             while index < bytes.count {
                 switch bytes[index] {
-                case UInt8(ascii: "\""): try skipString(); continue
+                case UInt8(ascii: "\""):
+                    try skipString()
+                    continue
                 case UInt8(ascii: "{"), UInt8(ascii: "["): depth += 1
                 case UInt8(ascii: "}"), UInt8(ascii: "]"):
                     depth -= 1
-                    if depth == 0 { index += 1; return }
+                    if depth == 0 {
+                        index += 1
+                        return
+                    }
                 default: break
                 }
                 index += 1
@@ -214,7 +239,8 @@ private struct JSONScanner {
             throw Failure()
         default:
             while index < bytes.count, !ClaudeSettingsEditor.isWhitespace(bytes[index]),
-                  ![UInt8(ascii: ","), UInt8(ascii: "}"), UInt8(ascii: "]")].contains(bytes[index]) {
+                ![UInt8(ascii: ","), UInt8(ascii: "}"), UInt8(ascii: "]")].contains(bytes[index])
+            {
                 index += 1
             }
         }

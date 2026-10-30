@@ -1,4 +1,5 @@
 import Foundation
+
 @testable import AIToolbox
 
 /// Synthetic usage shared by the layout tests and the documentation renders, so the
@@ -34,9 +35,10 @@ enum UsageFixtures {
         }
         // Earlier history, so the lifetime card is not just the week.
         let first = calendar.date(byAdding: .day, value: -41, to: today)!
-        let history = UsageTotals(requests: 2_310, turns: 402, toolCalls: 1_780, inputTokens: 118_000_000,
-                                  cacheReadTokens: 101_000_000, cacheWriteTokens: 4_300_000,
-                                  outputTokens: 3_050_000, reasoningTokens: 910_000)
+        let history = UsageTotals(
+            requests: 2_310, turns: 402, toolCalls: 1_780, inputTokens: 118_000_000,
+            cacheReadTokens: 101_000_000, cacheWriteTokens: 4_300_000,
+            outputTokens: 3_050_000, reasoningTokens: 910_000)
         daily.insert(DailyUsage(date: first, totals: history), at: 0)
         totals.requests += history.requests
         totals.turns += history.turns
@@ -50,13 +52,15 @@ enum UsageFixtures {
         let names = ["model-alpha", "model-beta", "model-gamma", "model-delta", "model-epsilon"]
         let shares = [0.62, 0.27, 0.08, 0.02, 0.01]
         let rows = (0..<min(models, names.count)).map { index in
-            ModelUsage(modelID: names[index],
-                       requests: Int64(Double(totals.requests) * shares[index]),
-                       inputTokens: Int64(Double(totals.inputTokens) * shares[index]),
-                       outputTokens: Int64(Double(totals.outputTokens) * shares[index]))
+            ModelUsage(
+                modelID: names[index],
+                requests: Int64(Double(totals.requests) * shares[index]),
+                inputTokens: Int64(Double(totals.inputTokens) * shares[index]),
+                outputTokens: Int64(Double(totals.outputTokens) * shares[index]))
         }
-        return UsageSnapshot(refreshedAt: date, totals: totals, daily: daily, models: rows,
-                             coverage: UsageCoverage(fileCount: 48))
+        return UsageSnapshot(
+            refreshedAt: date, totals: totals, daily: daily, models: rows,
+            coverage: UsageCoverage(fileCount: 48))
     }
 }
 

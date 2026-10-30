@@ -59,7 +59,8 @@ enum CodexModelCatalog {
             "truncation_policy": source["truncation_policy"] ?? ["mode": "tokens", "limit": 10_000],
             "experimental_supported_tools": [],
             "context_window": source["context_window"] ?? defaultContextWindow,
-            "max_context_window": source["max_context_window"] ?? source["context_window"] ?? defaultContextWindow,
+            "max_context_window": source["max_context_window"] ?? source["context_window"]
+                ?? defaultContextWindow,
         ]
         // The one field Codex refuses to default: an entry without instructions is
         // not loaded at all, so the official prompt travels with the model.
@@ -72,7 +73,8 @@ enum CodexModelCatalog {
             entry["effective_context_window_percent"] = percent
         }
 
-        let hiddenOfficial = official.filter { ($0["slug"] as? String) != slug }.map { model -> [String: Any] in
+        let hiddenOfficial = official.filter { ($0["slug"] as? String) != slug }.map {
+            model -> [String: Any] in
             var copy = model
             copy["visibility"] = "hide"
             return copy
@@ -83,9 +85,9 @@ enum CodexModelCatalog {
 
     private static func officialEntries(at url: URL) throws -> [[String: Any]] {
         guard let data = try? Data(contentsOf: url),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let models = root["models"] as? [[String: Any]],
-              !models.isEmpty
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let models = root["models"] as? [[String: Any]],
+            !models.isEmpty
         else { throw LiveConfigError.missingModelCatalog(url) }
         return models
     }

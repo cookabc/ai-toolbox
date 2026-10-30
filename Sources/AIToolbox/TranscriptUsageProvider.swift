@@ -92,8 +92,11 @@ enum TranscriptLayout {
             while let directory = pending.popLast() {
                 for entry in children(directory) {
                     guard let stat = FileStat.of(entry) else { continue }
-                    if stat.isDirectory { pending.append(entry) }
-                    else if stat.isRegular, entry.hasSuffix(".jsonl") { result.append(entry) }
+                    if stat.isDirectory {
+                        pending.append(entry)
+                    } else if stat.isRegular, entry.hasSuffix(".jsonl") {
+                        result.append(entry)
+                    }
                 }
             }
         case .claude:
@@ -105,8 +108,10 @@ enum TranscriptLayout {
                     } else if stat.isDirectory {
                         let subagents = entry + "/subagents"
                         guard FileStat.of(subagents)?.isDirectory == true else { continue }
-                        for agent in children(subagents) where agent.hasSuffix(".jsonl")
-                            && FileStat.of(agent)?.isRegular == true {
+                        for agent in children(subagents)
+                        where agent.hasSuffix(".jsonl")
+                            && FileStat.of(agent)?.isRegular == true
+                        {
                             result.append(agent)
                         }
                     }
@@ -118,7 +123,7 @@ enum TranscriptLayout {
 
     private static func children(_ directory: String) -> [String] {
         guard FileStat.of(directory)?.isDirectory == true,
-              let names = try? FileManager.default.contentsOfDirectory(atPath: directory)
+            let names = try? FileManager.default.contentsOfDirectory(atPath: directory)
         else { return [] }
         return names.map { directory + "/" + $0 }
     }
@@ -154,8 +159,9 @@ struct FileStat: Equatable, Sendable {
     }
 
     /// Matches no real file, so a file stored with it is always read again.
-    static let unreadable = FileStat(device: -1, inode: 0, size: -1, modifiedSeconds: 0,
-                                     modifiedNanoseconds: 0, isRegular: false, isDirectory: false)
+    static let unreadable = FileStat(
+        device: -1, inode: 0, size: -1, modifiedSeconds: 0,
+        modifiedNanoseconds: 0, isRegular: false, isDirectory: false)
 }
 
 // MARK: - One file
@@ -171,11 +177,14 @@ struct TranscriptFile: Sendable {
     var fingerprint: Data
     var records = TranscriptRecords()
 
-    static func read(path: String, stat: FileStat, format: UsageProviderID,
-                     resuming previous: TranscriptFile?) -> TranscriptFile {
+    static func read(
+        path: String, stat: FileStat, format: UsageProviderID,
+        resuming previous: TranscriptFile?
+    ) -> TranscriptFile {
         var file: TranscriptFile
         if let previous, previous.stat.isSameFile(as: stat), stat.size >= previous.offset,
-           TranscriptJSONL.fingerprint(of: path, upTo: previous.offset) == previous.fingerprint {
+            TranscriptJSONL.fingerprint(of: path, upTo: previous.offset) == previous.fingerprint
+        {
             file = previous
             file.stat = stat
         } else {
@@ -241,8 +250,10 @@ struct TranscriptSample: Sendable {
 // MARK: - Aggregation
 
 enum TranscriptAggregator {
-    static func snapshot(of files: [String: TranscriptFile], provider: UsageProviderID,
-                         calendar: Calendar) throws -> UsageSnapshot {
+    static func snapshot(
+        of files: [String: TranscriptFile], provider: UsageProviderID,
+        calendar: Calendar
+    ) throws -> UsageSnapshot {
         var samples: [TranscriptKey: TranscriptSample] = [:]
         var turns: [String: Date?] = [:]
         var tools: [String: Date?] = [:]
@@ -260,7 +271,8 @@ enum TranscriptAggregator {
             turnModels.merge(records.turnModels) { current, _ in current }
         }
         guard !samples.isEmpty else {
-            throw skipped > 0 ? ProviderReadError.incompatible(provider) : ProviderReadError.noRecords(provider)
+            throw skipped > 0
+                ? ProviderReadError.incompatible(provider) : ProviderReadError.noRecords(provider)
         }
 
         var totals = UsageTotals()
@@ -284,8 +296,11 @@ enum TranscriptAggregator {
             let tokens = sample.tokens
             reported.formUnion(tokens.reported)
             totals.add(tokens)
-            if let date = sample.date { days[dayStart(date), default: UsageTotals()].add(tokens) }
-            else { undated += 1 }
+            if let date = sample.date {
+                days[dayStart(date), default: UsageTotals()].add(tokens)
+            } else {
+                undated += 1
+            }
             let model = sample.model ?? sample.turnID.flatMap { turnModels[$0] } ?? "unknown"
             var entry = models[model] ?? (0, 0, 0)
             entry.requests = saturating(entry.requests, 1)
@@ -302,16 +317,22 @@ enum TranscriptAggregator {
             if let date { days[dayStart(date), default: UsageTotals()].toolCalls += 1 }
         }
 
-        let ranked = models.map { ModelUsage(modelID: $0.key, requests: $0.value.requests,
-                                             inputTokens: $0.value.input, outputTokens: $0.value.output) }
-            .sorted { $0.outputTokens != $1.outputTokens ? $0.outputTokens > $1.outputTokens : $0.modelID < $1.modelID }
+        let ranked = models.map {
+            ModelUsage(
+                modelID: $0.key, requests: $0.value.requests,
+                inputTokens: $0.value.input, outputTokens: $0.value.output)
+        }
+        .sorted {
+            $0.outputTokens != $1.outputTokens ? $0.outputTokens > $1.outputTokens : $0.modelID < $1.modelID
+        }
         return UsageSnapshot(
             refreshedAt: Date(),
             totals: totals,
             daily: days.keys.sorted().map { DailyUsage(date: $0, totals: days[$0]!) },
             models: ranked,
-            coverage: UsageCoverage(fileCount: files.count, skippedRecords: skipped,
-                                    undatedRecords: undated, reported: reported)
+            coverage: UsageCoverage(
+                fileCount: files.count, skippedRecords: skipped,
+                undatedRecords: undated, reported: reported)
         )
     }
 

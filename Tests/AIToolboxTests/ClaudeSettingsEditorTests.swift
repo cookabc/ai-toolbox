@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 final class ClaudeSettingsEditorTests: XCTestCase {
@@ -15,43 +16,51 @@ final class ClaudeSettingsEditorTests: XCTestCase {
     /// user's own formatting, unescaped slashes.
     func testOnlyTheEnvObjectChanges() throws {
         let original = """
-        {
-          "permissions": {"allow": ["Bash(git log:*)"], "deny": []},
-          "env": {
-            "ANTHROPIC_BASE_URL": "https://old.example/anthropic",
-            "MY_FLAG": true,
-            "MAX_TOKENS": 32000,
-            "ANTHROPIC_MODEL": "old"
-          },
-          "theme": "dark",
-          "hooks": { "Stop": [ { "command": "say done" } ] }
-        }
+            {
+              "permissions": {"allow": ["Bash(git log:*)"], "deny": []},
+              "env": {
+                "ANTHROPIC_BASE_URL": "https://old.example/anthropic",
+                "MY_FLAG": true,
+                "MAX_TOKENS": 32000,
+                "ANTHROPIC_MODEL": "old"
+              },
+              "theme": "dark",
+              "hooks": { "Stop": [ { "command": "say done" } ] }
+            }
 
-        """
-        let result = try apply(edit(set: [("ANTHROPIC_MODEL", "new"), ("ANTHROPIC_API_KEY", "sk/with/slashes")],
-                                    remove: ["ANTHROPIC_BASE_URL"]), to: original)
-        XCTAssertEqual(result, """
-        {
-          "permissions": {"allow": ["Bash(git log:*)"], "deny": []},
-          "env": {
-            "MY_FLAG": true,
-            "MAX_TOKENS": 32000,
-            "ANTHROPIC_MODEL": "new",
-            "ANTHROPIC_API_KEY": "sk/with/slashes"
-          },
-          "theme": "dark",
-          "hooks": { "Stop": [ { "command": "say done" } ] }
-        }
+            """
+        let result = try apply(
+            edit(
+                set: [("ANTHROPIC_MODEL", "new"), ("ANTHROPIC_API_KEY", "sk/with/slashes")],
+                remove: ["ANTHROPIC_BASE_URL"]), to: original)
+        XCTAssertEqual(
+            result,
+            """
+            {
+              "permissions": {"allow": ["Bash(git log:*)"], "deny": []},
+              "env": {
+                "MY_FLAG": true,
+                "MAX_TOKENS": 32000,
+                "ANTHROPIC_MODEL": "new",
+                "ANTHROPIC_API_KEY": "sk/with/slashes"
+              },
+              "theme": "dark",
+              "hooks": { "Stop": [ { "command": "say done" } ] }
+            }
 
-        """)
+            """)
     }
 
     func testEnvIsAddedWhenAbsent() throws {
-        XCTAssertEqual(try apply(edit(set: [("A", "1")]), to: "{\n  \"theme\": \"dark\"\n}\n"),
-                       "{\n  \"env\": {\n    \"A\": \"1\"\n  },\n  \"theme\": \"dark\"\n}\n")
-        XCTAssertEqual(try apply(edit(set: [("A", "1")]), to: "{}"), "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}")
-        XCTAssertEqual(try apply(edit(set: [("A", "1")]), to: nil), "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}\n")
-        XCTAssertEqual(try apply(edit(set: [("A", "1")]), to: "  \n"), "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}\n")
+        XCTAssertEqual(
+            try apply(edit(set: [("A", "1")]), to: "{\n  \"theme\": \"dark\"\n}\n"),
+            "{\n  \"env\": {\n    \"A\": \"1\"\n  },\n  \"theme\": \"dark\"\n}\n")
+        XCTAssertEqual(
+            try apply(edit(set: [("A", "1")]), to: "{}"), "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}")
+        XCTAssertEqual(
+            try apply(edit(set: [("A", "1")]), to: nil), "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}\n")
+        XCTAssertEqual(
+            try apply(edit(set: [("A", "1")]), to: "  \n"), "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}\n")
         let compact = try apply(edit(set: [("A", "1")]), to: #"{"theme":"dark"}"#)
         let object = try JSONSerialization.jsonObject(with: Data(compact.utf8)) as? [String: Any]
         XCTAssertEqual((object?["env"] as? [String: String])?["A"], "1")
@@ -59,8 +68,9 @@ final class ClaudeSettingsEditorTests: XCTestCase {
     }
 
     func testRemovingEverythingLeavesAnEmptyObject() throws {
-        XCTAssertEqual(try apply(edit(remove: ["A"]), to: "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}\n"),
-                       "{\n  \"env\": {}\n}\n")
+        XCTAssertEqual(
+            try apply(edit(remove: ["A"]), to: "{\n  \"env\": {\n    \"A\": \"1\"\n  }\n}\n"),
+            "{\n  \"env\": {}\n}\n")
     }
 
     func testCompactEnvIsReindented() throws {
@@ -76,7 +86,9 @@ final class ClaudeSettingsEditorTests: XCTestCase {
 
     func testKeysContainingEscapesAreMatched() throws {
         let result = try apply(edit(remove: ["A/B"]), to: #"{"env": {"A\/B": "1", "C": "2"}}"#)
-        let env = (try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any])?["env"] as? [String: String]
+        let env =
+            (try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any])?["env"]
+            as? [String: String]
         XCTAssertEqual(env, ["C": "2"])
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 final class PerProviderConfigTests: XCTestCase {
@@ -11,15 +12,16 @@ final class PerProviderConfigTests: XCTestCase {
     func testSavingAModelNoLongerRewritesFamilyAliases() throws {
         let url = try uniqueURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try write("""
-        { "env": {
-            "ANTHROPIC_BASE_URL": "https://a.test",
-            "ANTHROPIC_MODEL": "old-model",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4",
-            "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4",
-            "CLAUDE_CODE_EFFORT_LEVEL": "high"
-        }}
-        """, to: url)
+        try write(
+            """
+            { "env": {
+                "ANTHROPIC_BASE_URL": "https://a.test",
+                "ANTHROPIC_MODEL": "old-model",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4",
+                "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4",
+                "CLAUDE_CODE_EFFORT_LEVEL": "high"
+            }}
+            """, to: url)
 
         try save(url, baseURL: "https://b.test", model: "deepseek-v4.1-flash")
 
@@ -36,11 +38,13 @@ final class PerProviderConfigTests: XCTestCase {
     func testDeclaredPerProviderKeysAreWritten() throws {
         let url = try uniqueURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try save(url, baseURL: "https://relay.test/v1", model: "deepseek-v4.1-flash", extraEnv: [
-            "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4.1-flash",
-            "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4.1-flash",
-            "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1048576",
-        ])
+        try save(
+            url, baseURL: "https://relay.test/v1", model: "deepseek-v4.1-flash",
+            extraEnv: [
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4.1-flash",
+                "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4.1-flash",
+                "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1048576",
+            ])
 
         let env = try env(of: url)
         XCTAssertEqual(env["ANTHROPIC_BASE_URL"], "https://relay.test")
@@ -56,13 +60,16 @@ final class PerProviderConfigTests: XCTestCase {
     func testSwitchingAwayFromAProviderRemovesTheKeysItOwned() throws {
         let url = try uniqueURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try save(url, baseURL: "https://relay-a.test/v1", model: "model-a", extraEnv: [
-            "ANTHROPIC_DEFAULT_OPUS_MODEL": "model-a",
-            "CLAUDE_CODE_EFFORT_LEVEL": "high",
-        ])
-        try save(url, baseURL: "https://relay-b.test/v1", model: "model-b",
-                 extraEnv: ["CLAUDE_CODE_EFFORT_LEVEL": "low"],
-                 removingKeys: ["ANTHROPIC_DEFAULT_OPUS_MODEL"])
+        try save(
+            url, baseURL: "https://relay-a.test/v1", model: "model-a",
+            extraEnv: [
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "model-a",
+                "CLAUDE_CODE_EFFORT_LEVEL": "high",
+            ])
+        try save(
+            url, baseURL: "https://relay-b.test/v1", model: "model-b",
+            extraEnv: ["CLAUDE_CODE_EFFORT_LEVEL": "low"],
+            removingKeys: ["ANTHROPIC_DEFAULT_OPUS_MODEL"])
 
         let env = try env(of: url)
         XCTAssertNil(env["ANTHROPIC_DEFAULT_OPUS_MODEL"])
@@ -75,8 +82,9 @@ final class PerProviderConfigTests: XCTestCase {
     func testKeysOutsideTheCuratedListAreIgnored() throws {
         let url = try uniqueURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try save(url, baseURL: "https://relay.test/v1", model: "m",
-                 extraEnv: ["AWS_SECRET_ACCESS_KEY": "nope", "PATH": "/evil"])
+        try save(
+            url, baseURL: "https://relay.test/v1", model: "m",
+            extraEnv: ["AWS_SECRET_ACCESS_KEY": "nope", "PATH": "/evil"])
 
         let env = try env(of: url)
         XCTAssertNil(env["AWS_SECRET_ACCESS_KEY"])
@@ -89,7 +97,9 @@ final class PerProviderConfigTests: XCTestCase {
         let url = try uniqueURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         try write(#"{ "env": { "ANTHROPIC_MODEL": "m", "MY_OWN_SETTING": "keep-me" } }"#, to: url)
-        try save(url, baseURL: "https://relay.test/v1", model: "m2", removingKeys: ["ANTHROPIC_DEFAULT_OPUS_MODEL"])
+        try save(
+            url, baseURL: "https://relay.test/v1", model: "m2", removingKeys: ["ANTHROPIC_DEFAULT_OPUS_MODEL"]
+        )
         XCTAssertEqual(try env(of: url)["MY_OWN_SETTING"], "keep-me")
     }
 
@@ -132,15 +142,16 @@ final class PerProviderConfigTests: XCTestCase {
     func testLoadCapturesPerProviderKeys() throws {
         let url = try uniqueURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try write("""
-        { "env": {
-            "ANTHROPIC_BASE_URL": "https://relay.test",
-            "ANTHROPIC_MODEL": "m",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL": "m",
-            "CLAUDE_CODE_EFFORT_LEVEL": "high",
-            "UNRELATED": "x"
-        }}
-        """, to: url)
+        try write(
+            """
+            { "env": {
+                "ANTHROPIC_BASE_URL": "https://relay.test",
+                "ANTHROPIC_MODEL": "m",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "m",
+                "CLAUDE_CODE_EFFORT_LEVEL": "high",
+                "UNRELATED": "x"
+            }}
+            """, to: url)
 
         let loaded = try ClaudeLiveSettingsStore.load(from: url)
         XCTAssertEqual(loaded.settings.extraEnv["ANTHROPIC_DEFAULT_SONNET_MODEL"], "m")
@@ -154,21 +165,21 @@ final class PerProviderConfigTests: XCTestCase {
     func testLibraryDecodesProvidersSavedByEarlierVersions() throws {
         let id = UUID()
         let legacy = """
-        {
-          "version": 1,
-          "providers": [
             {
-              "id": "\(id.uuidString)",
-              "app": "claude",
-              "name": "Old Relay",
-              "slug": "old-relay",
-              "baseURL": "https://old.test/v1",
-              "model": "old-model",
-              "apiKey": "sk-old"
+              "version": 1,
+              "providers": [
+                {
+                  "id": "\(id.uuidString)",
+                  "app": "claude",
+                  "name": "Old Relay",
+                  "slug": "old-relay",
+                  "baseURL": "https://old.test/v1",
+                  "model": "old-model",
+                  "apiKey": "sk-old"
+                }
+              ]
             }
-          ]
-        }
-        """
+            """
         let url = try uniqueURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         try write(legacy, to: url)
@@ -205,10 +216,12 @@ final class PerProviderConfigTests: XCTestCase {
         extraEnv: [String: String] = [:],
         removingKeys: Set<String> = []
     ) throws {
-        try ClaudeLiveSettingsStore.save(to: url, ClaudeLiveSettingsStore.edit(
-            baseURL: baseURL, model: model, apiKey: apiKey, credential: credential,
-            extraEnv: extraEnv, removingKeys: removingKeys
-        ))
+        try ClaudeLiveSettingsStore.save(
+            to: url,
+            ClaudeLiveSettingsStore.edit(
+                baseURL: baseURL, model: model, apiKey: apiKey, credential: credential,
+                extraEnv: extraEnv, removingKeys: removingKeys
+            ))
     }
 
     private func uniqueURL() throws -> URL {

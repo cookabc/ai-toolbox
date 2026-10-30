@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 /// Reads this machine's real transcripts. Aggregates only; nothing is printed that
@@ -19,7 +20,9 @@ final class LocalSmokeTests: XCTestCase {
             _ = try provider.load()
             let warmTime = clock.now - warm
             let t = snapshot.totals
-            print("SMOKE \(id.rawValue) files=\(snapshot.coverage.fileCount) req=\(t.requests) turns=\(t.turns) tools=\(t.toolCalls) in=\(t.inputTokens) cr=\(t.cacheReadTokens) cw=\(t.cacheWriteTokens) out=\(t.outputTokens) rs=\(t.reasoningTokens) skipped=\(snapshot.coverage.skippedRecords) undated=\(snapshot.coverage.undatedRecords) days=\(snapshot.daily.count) models=\(snapshot.models.map(\.modelID)) cold=\(coldTime) warm=\(warmTime)")
+            print(
+                "SMOKE \(id.rawValue) files=\(snapshot.coverage.fileCount) req=\(t.requests) turns=\(t.turns) tools=\(t.toolCalls) in=\(t.inputTokens) cr=\(t.cacheReadTokens) cw=\(t.cacheWriteTokens) out=\(t.outputTokens) rs=\(t.reasoningTokens) skipped=\(snapshot.coverage.skippedRecords) undated=\(snapshot.coverage.undatedRecords) days=\(snapshot.daily.count) models=\(snapshot.models.map(\.modelID)) cold=\(coldTime) warm=\(warmTime)"
+            )
         }
     }
 }
@@ -45,7 +48,9 @@ final class StressTests: XCTestCase {
         try handle.close()
         let appended = clock.now
         _ = try provider.load()
-        print("STRESS files=\(snapshot.coverage.fileCount) req=\(snapshot.totals.requests) tools=\(snapshot.totals.toolCalls) turns=\(snapshot.totals.turns) cold=\(cold) warm=\(warm) afterAppend=\(clock.now - appended)")
+        print(
+            "STRESS files=\(snapshot.coverage.fileCount) req=\(snapshot.totals.requests) tools=\(snapshot.totals.toolCalls) turns=\(snapshot.totals.turns) cold=\(cold) warm=\(warm) afterAppend=\(clock.now - appended)"
+        )
     }
 }
 
@@ -60,24 +65,33 @@ final class LocalConfigSmokeTests: XCTestCase {
         if let data = try ConfigFile.read(paths.codexConfig), let text = String(data: data, encoding: .utf8) {
             let document = try TomlDocument(text)
             XCTAssertEqual(document.text, text, "an untouched parse must round-trip exactly")
-            let relay = try CodexTomlEditor.upsertProvider(text, id: "smoke-relay", name: "Smoke", baseURL: "https://smoke.test/v1",
-                                                          apiKey: "sk-simulated", makeCurrent: true, model: "smoke-model")
+            let relay = try CodexTomlEditor.upsertProvider(
+                text, id: "smoke-relay", name: "Smoke", baseURL: "https://smoke.test/v1",
+                apiKey: "sk-simulated", makeCurrent: true, model: "smoke-model")
             let back = try CodexTomlEditor.removeProvider(relay, id: "smoke-relay")
             let before = Set(text.components(separatedBy: "\n"))
             let changed = back.components(separatedBy: "\n").filter { !before.contains($0) }
-            let lost = text.components(separatedBy: "\n").filter { !Set(back.components(separatedBy: "\n")).contains($0) }
-            print("SMOKE codex statements=\(document.statements.count) tables=\(document.childTables(of: ["plugins"]).count) plugin tables; after switch+remove: added=\(changed.map { $0.split(separator: "=").first.map(String.init) ?? $0 }) lost=\(lost.map { $0.split(separator: "=").first.map(String.init) ?? $0 })")
+            let lost = text.components(separatedBy: "\n").filter {
+                !Set(back.components(separatedBy: "\n")).contains($0)
+            }
+            print(
+                "SMOKE codex statements=\(document.statements.count) tables=\(document.childTables(of: ["plugins"]).count) plugin tables; after switch+remove: added=\(changed.map { $0.split(separator: "=").first.map(String.init) ?? $0 }) lost=\(lost.map { $0.split(separator: "=").first.map(String.init) ?? $0 })"
+            )
         }
         if let data = try ConfigFile.read(paths.claudeSettings) {
             let env = try ClaudeSettingsEditor.env(in: data)
-            let same = ClaudeSettingsEditor.Edit(set: env.filter { !$0.key.contains("KEY") && !$0.key.contains("TOKEN") }
-                .sorted { $0.key < $1.key }.map { (key: $0.key, value: $0.value) })
+            let same = ClaudeSettingsEditor.Edit(
+                set: env.filter { !$0.key.contains("KEY") && !$0.key.contains("TOKEN") }
+                    .sorted { $0.key < $1.key }.map { (key: $0.key, value: $0.value) })
             let unchanged = try ClaudeSettingsEditor.apply(same, to: data)
             print("SMOKE claude envKeys=\(env.keys.sorted()) setSameValuesChangesBytes=\(unchanged != data)")
-            let edited = try ClaudeSettingsEditor.apply(ClaudeSettingsEditor.Edit(set: [(key: "ANTHROPIC_MODEL", value: "smoke")]), to: data)
+            let edited = try ClaudeSettingsEditor.apply(
+                ClaudeSettingsEditor.Edit(set: [(key: "ANTHROPIC_MODEL", value: "smoke")]), to: data)
             let oldObject = try JSONSerialization.jsonObject(with: data) as! [String: Any]
             let newObject = try JSONSerialization.jsonObject(with: edited) as! [String: Any]
-            print("SMOKE claude topLevelKeys same=\(Set(oldObject.keys) == Set(newObject.keys)) otherValuesSame=\(NSDictionary(dictionary: oldObject.filter { $0.key != "env" }).isEqual(to: newObject.filter { $0.key != "env" }))")
+            print(
+                "SMOKE claude topLevelKeys same=\(Set(oldObject.keys) == Set(newObject.keys)) otherValuesSame=\(NSDictionary(dictionary: oldObject.filter { $0.key != "env" }).isEqual(to: newObject.filter { $0.key != "env" }))"
+            )
         }
     }
 }

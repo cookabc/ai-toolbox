@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import AIToolbox
 
 final class EndpointProbeTests: XCTestCase {
@@ -27,7 +28,8 @@ final class EndpointProbeTests: XCTestCase {
 
     func testProbeURLKeepsGatewayPathPrefix() {
         XCTAssertEqual(
-            EndpointProbe.requestURL(app: .claude, baseURL: "https://host.example/gateway/v1")?.absoluteString,
+            EndpointProbe.requestURL(app: .claude, baseURL: "https://host.example/gateway/v1")?
+                .absoluteString,
             "https://host.example/gateway/v1/messages"
         )
         XCTAssertEqual(
@@ -113,8 +115,9 @@ final class EndpointProbeTests: XCTestCase {
     /// Relays that only take `Authorization: Bearer` get what Claude Code sends for
     /// `ANTHROPIC_AUTH_TOKEN`, so the probe tests the same thing.
     func testClaudeAuthTokenProbeSendsBearer() throws {
-        let provider = StoredProvider(app: .claude, name: "R", slug: "r", baseURL: "https://relay.test",
-                                      model: "m", apiKey: "sk-token", credential: .authToken)
+        let provider = StoredProvider(
+            app: .claude, name: "R", slug: "r", baseURL: "https://relay.test",
+            model: "m", apiKey: "sk-token", credential: .authToken)
         let request = try XCTUnwrap(EndpointProbe.makeRequest(for: provider))
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-token")
         XCTAssertNil(request.value(forHTTPHeaderField: "x-api-key"))

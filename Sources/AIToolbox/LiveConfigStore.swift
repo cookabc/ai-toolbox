@@ -27,7 +27,8 @@ struct LiveConfigStore: Sendable {
     func readCodex() -> CodexSnapshot {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: paths.codexHome.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else {
+            isDirectory.boolValue
+        else {
             return CodexSnapshot(settings: .official, text: nil, state: .noCodexHome)
         }
         do {
@@ -37,7 +38,8 @@ struct LiveConfigStore: Sendable {
             let text = try Self.utf8(data, name: "config.toml")
             return CodexSnapshot(settings: try CodexTomlEditor.load(text), text: text, state: .ready)
         } catch {
-            return CodexSnapshot(settings: .official, text: nil, state: .unreadable(error.localizedDescription))
+            return CodexSnapshot(
+                settings: .official, text: nil, state: .unreadable(error.localizedDescription))
         }
     }
 
@@ -46,14 +48,16 @@ struct LiveConfigStore: Sendable {
     func activate(_ provider: StoredProvider, removingClaudeKeys: Set<String>) throws -> String? {
         switch provider.app {
         case .claude:
-            try ClaudeLiveSettingsStore.save(to: paths.claudeSettings, ClaudeLiveSettingsStore.edit(
-                baseURL: provider.baseURL,
-                model: provider.model,
-                apiKey: provider.apiKey,
-                credential: provider.credential,
-                extraEnv: provider.extraEnv,
-                removingKeys: removingClaudeKeys
-            ))
+            try ClaudeLiveSettingsStore.save(
+                to: paths.claudeSettings,
+                ClaudeLiveSettingsStore.edit(
+                    baseURL: provider.baseURL,
+                    model: provider.model,
+                    apiKey: provider.apiKey,
+                    credential: provider.credential,
+                    extraEnv: provider.extraEnv,
+                    removingKeys: removingClaudeKeys
+                ))
             return nil
         case .codex:
             return try writeCodex(provider, makeCurrent: true)
@@ -127,7 +131,8 @@ struct LiveConfigStore: Sendable {
     private func writeCodex(_ provider: StoredProvider, makeCurrent: Bool) throws -> String? {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: paths.codexHome.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else { throw LiveConfigError.missingCodexHome }
+            isDirectory.boolValue
+        else { throw LiveConfigError.missingCodexHome }
         // Written before `config.toml`, which may only ever point at a catalog that
         // already exists.
         let publication = makeCurrent ? publishCatalog(for: provider) : CatalogPublication()
@@ -137,7 +142,8 @@ struct LiveConfigStore: Sendable {
             let text = try data.map { try Self.utf8($0, name: "config.toml") } ?? ""
             if !makeCurrent, !CodexTomlEditor.hasProvider(text, id: provider.slug) { return nil }
             leavingOfficialModel = makeCurrent ? CodexTomlEditor.officialModel(in: text) : nil
-            keptHandWritten = CodexTomlEditor.rootString(text, key: CodexTomlEditor.modelCatalogKey) != nil
+            keptHandWritten =
+                CodexTomlEditor.rootString(text, key: CodexTomlEditor.modelCatalogKey) != nil
                 && !CodexTomlEditor.pointsAtPublishedCatalog(text)
             let next = try CodexTomlEditor.upsertProvider(
                 text,
@@ -187,7 +193,10 @@ struct LiveConfigStore: Sendable {
     private func removeCatalogIfUnused() {
         let data = try? ConfigFile.read(paths.codexConfig)
         if let text = data.flatMap({ String(data: $0, encoding: .utf8) }),
-           CodexTomlEditor.pointsAtPublishedCatalog(text) { return }
+            CodexTomlEditor.pointsAtPublishedCatalog(text)
+        {
+            return
+        }
         ConfigFile.remove(paths.codexModelCatalog)
     }
 }

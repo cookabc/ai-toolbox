@@ -76,22 +76,24 @@ struct PanelTopAnchor: NSViewRepresentable {
                 NSWindow.didBecomeKeyNotification,
                 NSWindow.didChangeScreenNotification,
             ] {
-                observers.append(center.addObserver(
-                    forName: name, object: window, queue: .main
-                ) { [weak self] _ in
-                    MainActor.assumeIsolated {
-                        self?.syncFrame()
-                        if name == NSWindow.didBecomeKeyNotification { self?.onOpen?() }
-                    }
-                })
+                observers.append(
+                    center.addObserver(
+                        forName: name, object: window, queue: .main
+                    ) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            self?.syncFrame()
+                            if name == NSWindow.didBecomeKeyNotification { self?.onOpen?() }
+                        }
+                    })
             }
             // The display arrangement changed, so the menu bar may have moved with it.
-            observers.append(center.addObserver(
-                forName: NSApplication.didChangeScreenParametersNotification,
-                object: nil, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.syncFrame() }
-            })
+            observers.append(
+                center.addObserver(
+                    forName: NSApplication.didChangeScreenParametersNotification,
+                    object: nil, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.syncFrame() }
+                })
             // `MenuBarExtra` hides its window instead of closing it, so this view stays
             // in the window between clicks. The watchdog follows the window's
             // visibility; left running, it woke the app ten times a second all day.
@@ -100,11 +102,12 @@ struct PanelTopAnchor: NSViewRepresentable {
                 NSWindow.didBecomeKeyNotification,
                 NSWindow.didResignKeyNotification,
             ] {
-                observers.append(center.addObserver(
-                    forName: name, object: window, queue: .main
-                ) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.updateWatchdog() }
-                })
+                observers.append(
+                    center.addObserver(
+                        forName: name, object: window, queue: .main
+                    ) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.updateWatchdog() }
+                    })
             }
             // Correct immediately: the panel may already be wrong before this view
             // entered the hierarchy, and waiting for the next resize would leave that
@@ -172,8 +175,10 @@ struct PanelTopAnchor: NSViewRepresentable {
             // Leave the window alone when it already matches: this runs from several
             // observers, and re-setting an identical frame is what turns a correction
             // into a feedback loop.
-            guard abs(window.frame.height - height) > 0.5
-                    || abs(window.frame.maxY - menuBarBottom) > 0.5 else {
+            guard
+                abs(window.frame.height - height) > 0.5
+                    || abs(window.frame.maxY - menuBarBottom) > 0.5
+            else {
                 missedTicks = 0
                 return
             }
@@ -195,7 +200,7 @@ struct PanelTopAnchor: NSViewRepresentable {
         /// them must still be watched.
         private func updateWatchdog() {
             guard let window,
-                  window.isVisible || window.isKeyWindow || window.occlusionState.contains(.visible)
+                window.isVisible || window.isKeyWindow || window.occlusionState.contains(.visible)
             else {
                 stopWatchdog()
                 return
@@ -224,7 +229,7 @@ struct PanelTopAnchor: NSViewRepresentable {
             // braces, because a panel that reports neither would leave the watchdog
             // silent on exactly the frame it exists to catch.
             guard let window,
-                  window.isVisible || window.isKeyWindow || window.occlusionState.contains(.visible)
+                window.isVisible || window.isKeyWindow || window.occlusionState.contains(.visible)
             else {
                 missedTicks = 0
                 stopWatchdog()
@@ -235,8 +240,10 @@ struct PanelTopAnchor: NSViewRepresentable {
                 for: desiredHeight ?? Self.currentContentHeight(window),
                 window: window
             )
-            guard abs(window.frame.height - height) > 0.5
-                    || abs(window.frame.maxY - menuBarBottom) > 0.5 else {
+            guard
+                abs(window.frame.height - height) > 0.5
+                    || abs(window.frame.maxY - menuBarBottom) > 0.5
+            else {
                 missedTicks = 0
                 return
             }
